@@ -1,6 +1,5 @@
-// dsh-billing 浏览器半：会话头部双胶囊（余额 + 本会话费用），事件驱动更新。
+// dsh-billing 浏览器半：会话头部三胶囊（余额 + 本会话费用 + 峰谷时段），事件驱动更新。
 // 工厂格式直接注册进平台模块表，仅依赖平台共享的 react（无构建步骤）。
-// 同时注册新旧两个包名 id，避免旧 graph 行残留时加载失败。
 function makeFactory(require) {
     const react = require('react')
     const { createElement: h, useCallback, useEffect, useRef, useState } = react
@@ -34,66 +33,142 @@ function makeFactory(require) {
       return c.toFixed(2)
     }
 
-    /** 从会话快照选取"最近一条已结算助手消息的 turn:step"（原始字符串，步进时变化）。 */
-    function selectStepSignal(snapshot) {
-      let best = null
-      for (const node of snapshot.nodes) {
-        if (node.kind !== 'assistant') continue
-        if (best === null || node.turn > best.turn || (node.turn === best.turn && node.step > best.step)) {
-          best = { turn: node.turn, step: node.step }
-        }
-      }
-      return best ? `${best.turn}:${best.step}` : ''
+    // 会话胶囊内容：费用做 number pop-in；totalTokens 太长，单独平铺显示
+    function sessionNum(costData, costFailed) {
+      if (!costData) return costFailed ? '—' : '…'
+      if (costData.cost <= 0) return h(Digits, { value: '¥0.00' })
+      return h('span', {},
+        h(Digits, { value: `¥${fmtCost(costData.cost)}` }),
+        `(${costData.totalTokens.toLocaleString()})`,
+      )
     }
 
-    /** 从会话快照选取"最近完成的轮次号"（原始值，轮次结束时变化）。 */
-    function selectMaxTurnEnd(snapshot) {
-      let max = 0
-      for (const turn of snapshot.turnEnds.keys()) if (turn > max) max = turn
-      return max
+    // ---- 胶囊样式（用 DSH design token，适配明暗模式）----
+    const BILLING_CSS_ID = 'dsh-billing-pills'
+    const BILLING_CSS = `
+      .billing-pills { display: inline-flex; align-items: center; gap: 2px; }
+      .billing-pill {
+        display: inline-flex; align-items: center; gap: 3px;
+        min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;
+        background: transparent; color: var(--dsw-alias-label-secondary);
+        font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;
+        transition: background 120ms ease, color 120ms ease;
+      }
+      .billing-pill:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+      .billing-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+      .billing-ok { color: #43b97f; }
+      .billing-warn { color: #e08a3e; }
+
+      /* Number pop-in (transitions.dev) */
+      :root {
+        --digit-dur: 500ms;
+        --digit-distance: 8px;
+        --digit-stagger: 70ms;
+        --digit-blur: 2px;
+        --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+        --digit-dir-x: 0;
+        --digit-dir-y: 1;
+      }
+      @keyframes t-digit-pop-in {
+        0% { transform: translate(calc(var(--digit-distance) * var(--digit-dir-x)), calc(var(--digit-distance) * var(--digit-dir-y))); opacity: 0; filter: blur(var(--digit-blur)); }
+        100% { transform: translate(0, 0); opacity: 1; filter: blur(0); }
+      }
+      .t-digit-group { display: inline-flex; align-items: baseline; }
+      .t-digit { display: inline-block; will-change: transform, opacity, filter; }
+      .t-digit-group.is-animating .t-digit { animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both; }
+      .t-digit-group.is-animating .t-digit[data-stagger="1"] { animation-delay: var(--digit-stagger); }
+      .t-digit-group.is-animating .t-digit[data-stagger="2"] { animation-delay: calc(var(--digit-stagger) * 2); }
+      @media (prefers-reduced-motion: reduce) {
+        .t-digit-group .t-digit { animation: none !important; }
+      }
+    `
+    if (typeof document !== 'undefined') {
+      let tag = document.querySelector('style[data-plugin-css="' + BILLING_CSS_ID + '"]')
+      if (!tag) {
+        tag = document.createElement('style')
+        tag.setAttribute('data-plugin', 'dsh-billing')
+        tag.setAttribute('data-plugin-css', BILLING_CSS_ID)
+        document.head.appendChild(tag)
+      }
+      tag.textContent = BILLING_CSS
     }
 
-    /**
-     * 纯函数：根据最新信号决定是否触发一次刷新。
-     * fire 条件：轮次结束；或同一轮内步号跨过 10 的整数倍边界。
-     * @param {object} st 上一次状态 {ready, turn, step, turnEnd}
-     * @param {string} stepSig 最近助手消息的 "turn:step"（可为空）
-     * @param {number} turnEndSig 最近结束的轮次号
-     */
-    function evaluateStepTrigger(st, stepSig, turnEndSig) {
-      const cur = stepSig === '' ? null : stepSig.split(':').map(Number)
-      const curTurn = cur ? cur[0] : 0
-      const curStep = cur ? cur[1] : 0
-      if (!st.ready) {
-        return { st: { ready: true, turn: curTurn, step: curStep, turnEnd: turnEndSig }, fire: false }
-      }
-      if (turnEndSig !== st.turnEnd) {
-        return { st: { ...st, turnEnd: turnEndSig, turn: curTurn, step: curStep }, fire: true }
-      }
-      if (curTurn === st.turn && Math.floor(curStep / 10) > Math.floor(st.step / 10)) {
-        return { st: { ...st, step: curStep }, fire: true }
-      }
-      if (curTurn !== st.turn) {
-        return { st: { ...st, turn: curTurn, step: curStep }, fire: false }
-      }
-      return { st, fire: false }
+    // ---- Number pop-in：数字值变化时自动重放（transitions.dev React 适配）----
+    function useDigits(value) {
+      const [playing, setPlaying] = useState(false)
+      const first = useRef(true)
+      useEffect(() => {
+        if (first.current) { first.current = false; return }
+        setPlaying(false)
+        const raf = requestAnimationFrame(() => requestAnimationFrame(() => setPlaying(true)))
+        return () => cancelAnimationFrame(raf)
+      }, [value])
+      return playing
     }
 
-    const pillBase = {
-      display: 'inline-flex',
-      alignItems: 'center',
-      whiteSpace: 'nowrap',
-      fontVariantNumeric: 'tabular-nums',
-      fontSize: '11px',
-      lineHeight: '20px',
-      padding: '0 8px',
-      borderRadius: '999px',
-      border: '1px solid rgba(127, 127, 127, 0.3)',
-      background: 'rgba(127, 127, 127, 0.12)',
-      cursor: 'pointer',
+    function Digits({ value }) {
+      const playing = useDigits(value)
+      return h(
+        'span',
+        { className: 't-digit-group' + (playing ? ' is-animating' : '') },
+        String(value).split('').map((ch, i) => h('span', { key: i, className: 't-digit', 'data-stagger': i > 0 ? String(i) : undefined }, ch)),
+      )
     }
 
-    // ---- 双胶囊：余额 + 本会话费用（会话头部静态区，order 为负）----
+    // ---- DeepSeek API 峰谷时段（北京时间 UTC+8）----
+    // 官方时段：工作日高峰 09:00–12:00、14:00–18:00；其余为低谷；
+    // 周六/周日全天低谷；低谷价 = 高峰价的一半。
+    const TZ_OFFSET_MS = 8 * 3600 * 1000
+    const PEAK_RANGES = [[9 * 60, 12 * 60], [14 * 60, 18 * 60]] // [startMin, endMin)
+    const DAY_MS = 24 * 3600 * 1000
+
+    /** 转成北京时间的 (weekday, 当日分钟数)。weekday: 0=周日 … 6=周六。 */
+    function bjParts(date) {
+      const bj = new Date(date.getTime() + TZ_OFFSET_MS)
+      return { weekday: bj.getUTCDay(), minutes: bj.getUTCHours() * 60 + bj.getUTCMinutes() }
+    }
+
+    /** 某时刻是否处于高峰（北京时间）。周末全天低谷 → false。 */
+    function isPeakAt(date) {
+      const { weekday, minutes } = bjParts(date)
+      if (weekday === 0 || weekday === 6) return false
+      return PEAK_RANGES.some(([s, e]) => minutes >= s && minutes < e)
+    }
+
+    /** 距下一次状态翻转（高峰↔低谷）的小时数；最多向后找 3 天。 */
+    function nextChangeHours(date) {
+      const start = date.getTime()
+      const current = isPeakAt(date)
+      const limit = start + 3 * DAY_MS
+      for (let t = start + 60 * 1000; t < limit; t += 60 * 1000) {
+        if (isPeakAt(new Date(t)) !== current) return (t - start) / 3600000
+      }
+      return 72
+    }
+
+    /** 计算时段状态：{ isPeak, nextChangeHours }。纯函数，供 UI 与单测共用。 */
+    function computeTide(date) {
+      return { isPeak: isPeakAt(date), nextChangeHours: nextChangeHours(date) }
+    }
+
+    /** 完整文案用：>=1h 显示小时（一位小数），<1h 显示分钟。 */
+    function fmtRemain(hours) {
+      if (hours < 1) {
+        const m = Math.max(1, Math.round(hours * 60))
+        return `${m} 分钟`
+      }
+      const r = Math.round(hours * 10) / 10
+      return `${Number.isInteger(r) ? r : r.toFixed(1)} 小时`
+    }
+
+    /** 胶囊简写：>=1h 显示 `5.8h`，<1h 显示 `38m`。 */
+    function fmtRemainShort(hours) {
+      if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`
+      const r = Math.round(hours * 10) / 10
+      return `${Number.isInteger(r) ? r : r.toFixed(1)}h`
+    }
+
+    // ---- 三胶囊：余额 + 本会话费用 + 峰谷时段（会话头部静态区，order 为负）----
     // 更新策略（按需触发，无空闲轮询）：
     //  1. 轮次中：每完成 10 步刷新一次（跨过 10 的整数倍边界时）
     //  2. 每轮结束（turn/end）：刷新一次，结算本轮的收尾步
@@ -107,6 +182,8 @@ function makeFactory(require) {
       const [balData, setBalData] = useState(null)
       const [costFailed, setCostFailed] = useState(false)
       const [balFailed, setBalFailed] = useState(false)
+      // 峰谷时段：用当前时间计算；每分钟刷新一次以更新"还剩 X 小时"。
+      const [tideNow, setTideNow] = useState(() => Date.now())
       // 两个端点各自独立序号：只丢弃"同端点"的过期响应，互不干扰
       const costEpochRef = useRef(0)
       const balEpochRef = useRef(0)
@@ -148,20 +225,14 @@ function makeFactory(require) {
         refreshAll()
       }, [sessionId])
 
-      // 事件驱动信号（原始值，避免多余渲染）
-      const stepSig = typeof props.useSession === 'function' ? props.useSession(selectStepSignal) : ''
-      const turnEndSig = typeof props.useSession === 'function' ? props.useSession(selectMaxTurnEnd) : 0
-
-      // 步进触发：同一轮内每跨过 10 的整数倍 → 防抖 300ms 刷新；轮次结束 → 刷新
-      const progressRef = useRef({ ready: false, turn: 0, step: 0, turnEnd: 0 })
+      // 轮次结束刷新：running 从 true → false 时结算本轮（新版快照无 turn/step，改用 running 判断）
+      const running = typeof props.useSession === 'function' ? props.useSession((s) => s.running) : false
+      const prevRunningRef = useRef(running)
       useEffect(() => {
-        const st = progressRef.current
-        const next = evaluateStepTrigger(st, stepSig, turnEndSig)
-        progressRef.current = next.st
-        if (!next.fire) return
-        const timer = setTimeout(refreshAll, 300) // 同批多次变化合并为一次请求
-        return () => clearTimeout(timer)
-      }, [sessionId, stepSig, turnEndSig])
+        const wasRunning = prevRunningRef.current
+        prevRunningRef.current = running
+        if (wasRunning && !running) refreshAll()
+      }, [running, refreshAll])
 
       // 页面从后台切回可见：立即刷新一次（非轮询）
       useEffect(() => {
@@ -172,8 +243,22 @@ function makeFactory(require) {
         return () => document.removeEventListener('visibilitychange', onVisibility)
       }, [refreshAll])
 
+      // 峰谷时段：每分钟更新一次当前时间，让"还剩 X 小时"跟随变化
+      useEffect(() => {
+        const timer = setInterval(() => setTideNow(Date.now()), 60 * 1000)
+        return () => clearInterval(timer)
+      }, [])
+
       const cny = balData && balData.infos ? balData.infos.find((i) => i.currency === 'CNY') : undefined
       const usd = balData && balData.infos ? balData.infos.find((i) => i.currency === 'USD') : undefined
+      // ---- 峰谷时段胶囊（北京时间）----
+      const tide = computeTide(new Date(tideNow))
+      const tideLabel = tide.isPeak ? '高峰时段' : '低谷时段'
+      const tideRemain = fmtRemain(tide.nextChangeHours)
+      const tideSummary = `DeepSeek API 峰谷定价（北京时间）\n工作日高峰 09:00–12:00、14:00–18:00；周末全天低谷。\n低谷价 = 高峰价的一半。`
+      const tideTitle = tide.isPeak
+        ? `目前为高峰时段。低谷价还要 ${tideRemain}。`
+        : `当前为低谷时段。还有 ${tideRemain} 变更为高峰价。\n${tideSummary}`
       let balTitle = 'DeepSeek 账户余额（点击刷新）'
       if (cny) {
         balTitle = `DeepSeek 账户余额（点击刷新）\n人民币：总 ¥${cny.totalBalance}（充值 ¥${cny.toppedUpBalance}，赠金 ¥${cny.grantedBalance}）${balData.isAvailable ? '' : '（当前不可用）'}`
@@ -195,34 +280,43 @@ function makeFactory(require) {
 
       return h(
         'span',
-        { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
+        { className: 'billing-pills' },
         h(
           'span',
           {
+            className: 'billing-pill',
             title: balTitle,
-            style: { ...pillBase },
             onClick: () => refreshAll(),
           },
           '余额 ',
-          h('b', { style: { color: cny ? 'rgba(64, 158, 106, 1)' : 'inherit' } }, `¥${cny ? cny.totalBalance : balFailed ? '—' : '…'}`),
+          h('b', { className: 'billing-num' + (cny ? ' billing-ok' : '') }, h(Digits, { value: cny ? `¥${cny.totalBalance}` : (balFailed ? '—' : '…') })),
         ),
         h(
           'span',
           {
+            className: 'billing-pill',
             title: costTitle,
-            style: { ...pillBase, opacity: costFailed ? 0.45 : 1 },
             onClick: () => refreshAll(),
+            style: costFailed ? { opacity: 0.45 } : undefined,
           },
           '会话 ',
-          h('b', null, `¥${costData ? fmtCost(costData.cost) : costFailed ? '—' : '…'}`),
+          h('b', { className: 'billing-num' }, sessionNum(costData, costFailed)),
+        ),
+        h(
+          'span',
+          {
+            className: 'billing-pill',
+            title: tideTitle,
+            onClick: () => { refreshAll(); setTideNow(Date.now()) },
+          },
+          tideLabel,
+          ' · ',
+          h('b', { className: 'billing-num ' + (tide.isPeak ? 'billing-warn' : 'billing-ok') }, h(Digits, { value: fmtRemainShort(tide.nextChangeHours) })),
         ),
       )
     }
 
     function apply(ctx) {
-      // 兼容旧包名残留的 graph 行：只在新包名条目下注册，避免重复胶囊。
-      const entryName = ctx.fiber?.entry?.options?.name
-      if (entryName !== undefined && entryName !== 'dsh-billing') return
       // conversation.session.header.actions：会话头部动作区（list 槽位；负数 order = 静态会话上下文）
       ctx.slots.inject('conversation.session.header.actions', () =>
         ctx.slots.register(
@@ -235,9 +329,8 @@ function makeFactory(require) {
     const exports = {}
     exports.inject = ['slots']
     exports.apply = apply
-    // 测试挂点（生产无副作用）：供离线单测验证触发逻辑
-    exports.testHooks = { evaluateStepTrigger, selectStepSignal, selectMaxTurnEnd }
+    // 测试挂点（生产无副作用）
+    exports.testHooks = { computeTide }
     return exports
 }
 window.__ModuleLoader__.load({ id: 'dsh-billing', factory: makeFactory })
-window.__ModuleLoader__.load({ id: 'dsh-deepseek-billing', factory: makeFactory })

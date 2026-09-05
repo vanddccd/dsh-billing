@@ -28,6 +28,7 @@ const DEFAULT_PEAK_WINDOWS = [[9, 12], [14, 18]]
  * 官方单价（人民币 / 百万 tokens）。
  * 2026-08-17 00:00（北京时间）前使用扁平价；之后按峰谷时段计费：
  * 高峰 9:00–12:00、14:00–18:00，其余为闲时。
+ * 2026-08-23 00:00（北京时间）起：工作日维持峰谷，周末（周六/周日）全天执行低谷价。
  * 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
  */
 const DEFAULT_PRICING = {
@@ -37,6 +38,8 @@ const DEFAULT_PRICING = {
       effectiveAt: '2026-08-17T00:00:00+08:00',
       timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
       peakWindows: DEFAULT_PEAK_WINDOWS,
+      // 2026-08-23 起官方规则：周末（周六/周日）全天执行低谷价。
+      weekendOffPeak: true,
       offPeak: { cacheHit: 0.05, cacheMiss: 1.5, output: 4.5 },
       peak: { cacheHit: 0.1, cacheMiss: 3.0, output: 9.0 },
     }],
@@ -47,6 +50,8 @@ const DEFAULT_PRICING = {
       effectiveAt: '2026-08-17T00:00:00+08:00',
       timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
       peakWindows: DEFAULT_PEAK_WINDOWS,
+      // 2026-08-23 起官方规则：周末（周六/周日）全天执行低谷价。
+      weekendOffPeak: true,
       offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 },
       peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 },
     }],
@@ -108,81 +113,83 @@ export function parsePricingHtml(html) {
   const tables = htmlTables(html)
   const models = {}
 
-  // 1. 主价格表：第一行是模型列（deepseek-*），其后有"百万tokens输入（缓存命中）"等行。
-  //    注意：指标行可能带 rowspan 标签列（价格(1)），价格相对指标标签的偏移 = 模型列下标。
+  // 1. 找模型列顺序（表头行里的 deepseek-* 单元格，按出现顺序）。
+  let modelOrder = []
   for (const rows of tables) {
     const header = rows[0] ?? []
-    const modelCols = []
-    for (let i = 1; i < header.length; i++) {
-      if (/^deepseek-[\w.-]+$/.test(header[i])) modelCols.push({ idx: i, model: header[i] })
+    const cols = []
+    for (const cell of header) {
+      if (/^deepseek-[\w.-]+$/.test(cell)) cols.push(cell)
     }
-    if (modelCols.length === 0) continue
-    const hitLabel = '百万tokens输入（缓存命中）'
-    const missLabel = '百万tokens输入（缓存未命中）'
-    const outLabel = '百万tokens输出'
-    const findRow = (label) => rows.find((r) => r.includes(label)) ?? null
-    const hitRow = findRow(hitLabel)
-    const missRow = findRow(missLabel)
-    const outRow = findRow(outLabel)
-    if (!hitRow || !missRow || !outRow) continue
-    for (const { idx, model } of modelCols) {
-      const entry = {
-        cacheHit: parseYuan(hitRow[hitRow.indexOf(hitLabel) + idx]),
-        cacheMiss: parseYuan(missRow[missRow.indexOf(missLabel) + idx]),
-        output: parseYuan(outRow[outRow.indexOf(outLabel) + idx]),
+    if (cols.length > 0) { modelOrder = cols; break }
+  }
+  if (modelOrder.length === 0) return null
+
+  // 2. 遍历行收集「指标 × 时段」价格。
+  //    官方表格结构：指标列 rowspan=2，跨「空闲时段」「高峰时段」两行；
+  //    htmlTables 不展开 rowspan，所以高峰行缺指标标签，靠「上一个指标」关联。
+  const METRIC_LABELS = [
+    ['百万tokens输入（缓存命中）', 'cacheHit'],
+    ['百万tokens输入（缓存未命中）', 'cacheMiss'],
+    ['百万tokens输出', 'output'],
+  ]
+  const offPeak = {} // model -> { cacheHit, cacheMiss, output }
+  const peak = {}
+  let currentMetric = null
+
+  for (const rows of tables) {
+    for (const row of rows) {
+      for (const [label, field] of METRIC_LABELS) {
+        if (row.includes(label)) { currentMetric = field; break }
       }
-      if ([entry.cacheHit, entry.cacheMiss, entry.output].every(Number.isFinite)) models[model] = entry
+      if (currentMetric === null) continue
+
+      let target = null
+      let priceStart = -1
+      const idleIdx = row.indexOf('空闲时段')
+      const peakIdx = row.indexOf('高峰时段')
+      if (idleIdx >= 0) { target = offPeak; priceStart = idleIdx + 1 }
+      else if (peakIdx >= 0) { target = peak; priceStart = peakIdx + 1 }
+      if (target === null) continue
+
+      for (let i = 0; i < modelOrder.length; i++) {
+        const price = parseYuan(row[priceStart + i])
+        if (!Number.isFinite(price)) continue
+        const model = modelOrder[i]
+        if (!target[model]) target[model] = {}
+        target[model][currentMetric] = price
+      }
     }
   }
 
-  // 2. 峰谷价表：行首为模型名（rowspan 跨两行），随后是 空闲时段 / 高峰时段 各一行三价
-  let scheduleTable = null
-  for (const rows of tables) {
-    if (rows.some((r) => r.includes('空闲时段'))) {
-      scheduleTable = rows
-      break
-    }
-  }
-  let schedule = null
-  if (scheduleTable) {
-    const peak = {}
-    const offPeak = {}
-    let currentModel = null
-    for (const row of scheduleTable) {
-      if (/^deepseek-[\w.-]+$/.test(row[0] ?? '')) {
-        currentModel = row[0]
-        if (row[1] === '空闲时段') offPeak[currentModel] = [parseYuan(row[2]), parseYuan(row[3]), parseYuan(row[4])]
-        else if (row[1] === '高峰时段') peak[currentModel] = [parseYuan(row[2]), parseYuan(row[3]), parseYuan(row[4])]
-      } else if (currentModel && (row[0] === '空闲时段' || row[0] === '高峰时段')) {
-        ;(row[0] === '空闲时段' ? offPeak : peak)[currentModel] = [parseYuan(row[1]), parseYuan(row[2]), parseYuan(row[3])]
-      }
-    }
-    // 生效时间与高峰时段窗口（取自页脚说明文本）
-    const eff = html.match(/北京时间\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*(\d{1,2}):(\d{2})/)
-    const windowsText = html.match(/高峰时段为北京时间([\s\S]*?)(?:（|。|；|<)/)?.[1] ?? ''
-    const windows = [...windowsText.matchAll(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g)].map((m) => [Number(m[1]), Number(m[3])])
-    if (eff && windows.length > 0) {
-      const effectiveAt = `${eff[1]}-${String(eff[2]).padStart(2, '0')}-${String(eff[3]).padStart(2, '0')}T${String(eff[4]).padStart(2, '0')}:${String(eff[5]).padStart(2, '0')}:00+08:00`
-      schedule = { effectiveAt, timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES, peakWindows: windows }
-      for (const model of Object.keys(offPeak)) {
-        if (peak[model] && offPeak[model].every(Number.isFinite) && peak[model].every(Number.isFinite)) {
-          models[model] = {
-            ...(models[model] ?? {}),
-            schedules: [{
-              effectiveAt,
-              timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
-              peakWindows: windows,
-              offPeak: { cacheHit: offPeak[model][0], cacheMiss: offPeak[model][1], output: offPeak[model][2] },
-              peak: { cacheHit: peak[model][0], cacheMiss: peak[model][1], output: peak[model][2] },
-            }],
-          }
-        }
-      }
+  // 3. 组装 models：空闲价作为顶层基准价，峰谷价写入 schedules。
+  //    价格页未给生效日期（当前已处于峰谷价生效期），沿用 2026-08-17 生效日；
+  //    2026-08-23 起周末（周六/周日）全天执行低谷价。
+  const EFFECTIVE_AT = '2026-08-17T00:00:00+08:00'
+  const PEAK_WINDOWS = [[9, 12], [14, 18]]
+  for (const model of modelOrder) {
+    const off = offPeak[model]
+    const pk = peak[model]
+    if (!off || !pk) continue
+    if (![off.cacheHit, off.cacheMiss, off.output].every(Number.isFinite)) continue
+    if (![pk.cacheHit, pk.cacheMiss, pk.output].every(Number.isFinite)) continue
+    models[model] = {
+      cacheHit: off.cacheHit,
+      cacheMiss: off.cacheMiss,
+      output: off.output,
+      schedules: [{
+        effectiveAt: EFFECTIVE_AT,
+        timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
+        peakWindows: PEAK_WINDOWS,
+        weekendOffPeak: true,
+        offPeak: { cacheHit: off.cacheHit, cacheMiss: off.cacheMiss, output: off.output },
+        peak: { cacheHit: pk.cacheHit, cacheMiss: pk.cacheMiss, output: pk.output },
+      }],
     }
   }
 
   if (Object.keys(models).length === 0) return null
-  return { models, schedule }
+  return { models, schedule: { effectiveAt: EFFECTIVE_AT, timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES, peakWindows: PEAK_WINDOWS, weekendOffPeak: true } }
 }
 
 /**
@@ -238,6 +245,11 @@ export function rateAt(pricingEntry, timeMs) {
   if (!active) return { rate: pricingEntry, mode: 'flat' }
   const offset = Number.isFinite(active.timezoneOffsetMinutes) ? active.timezoneOffsetMinutes : BEIJING_OFFSET_MINUTES
   const shifted = new Date(timeMs + offset * 60000)
+  // 2026-08-23 起官方规则：周末（周六/周日）全天执行低谷价。
+  const weekday = shifted.getUTCDay() // 0=周日 … 6=周六
+  if (active.weekendOffPeak === true && (weekday === 0 || weekday === 6)) {
+    return { rate: active.offPeak, mode: 'off-peak' }
+  }
   const hour = shifted.getUTCHours()
   const windows = Array.isArray(active.peakWindows) && active.peakWindows.length > 0
     ? active.peakWindows
@@ -257,13 +269,13 @@ function stepKey(turn, step) {
  * assistant/message.usage 只在没有 usage 分片时作为兜底（例如历史兼容）。
  * 失败的请求没有 assistant 消息，但其 usage 分片已持久化，会被计入。
  *
- * @param {any} session 事件溯源会话对象（agent.session）
+ * @param {any[]} events 会话事件日志数组（session-query 读取的完整日志）
  * @returns {Map<string, {turn:number, step:number, time:number, usage:any, model:string|null}>}
  */
-export function collectUsage(session) {
+export function collectUsage(events) {
   const steps = new Map()
-  if (!session || !Array.isArray(session.events)) return steps
-  for (const event of session.events) {
+  if (!Array.isArray(events)) return steps
+  for (const event of events) {
     if (event.type === 'assistant/chunk') {
       const chunk = event.data?.chunk
       if (chunk?.type !== 'usage') continue
@@ -326,8 +338,8 @@ function fmtMoney(cny) {
 }
 
 /** 会话费用文本（人民币）。pricingCtx = { pricing, fallbackPrice, source, syncedAt }。 */
-export function formatCostText(session, pricingCtx) {
-  const steps = collectUsage(session)
+export function formatCostText(events, pricingCtx) {
+  const steps = collectUsage(events)
   const nowMs = Date.now()
   const rows = summarize(steps, pricingCtx, nowMs)
   if (rows.length === 0) {
@@ -345,7 +357,7 @@ export function formatCostText(session, pricingCtx) {
     )
   }
   lines.push('', `合计：¥${fmtMoney(total)}`)
-  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起自动使用峰谷价）；子代理是独立会话，各自单独统计。')
+  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价，2026-08-23 起周末全天低谷价）；子代理是独立会话，各自单独统计。')
   const src = pricingCtx?.source === 'online'
     ? `单价来源：官方在线同步${pricingCtx.syncedAt ? `（${new Date(pricingCtx.syncedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}）` : ''}`
     : '单价来源：内置默认（官方在线同步不可用，若官方改价请手动更新配置）'
@@ -496,10 +508,11 @@ export function apply(ctx, config) {
   }
 
   /** 结构化会话费用数据（供 Web UI 会话头部渲染）。 */
-  function costPayload(session) {
-    const rows = summarize(collectUsage(session), current, Date.now())
+  function costPayload(events) {
+    const rows = summarize(collectUsage(events), current, Date.now())
     return {
       cost: rows.reduce((sum, row) => sum + row.cost, 0),
+      totalTokens: rows.reduce((sum, row) => sum + row.inputTokens + row.cacheReadTokens + row.outputTokens, 0),
       models: rows.map((row) => ({
         model: row.model,
         cost: row.cost,
@@ -513,6 +526,15 @@ export function apply(ctx, config) {
       pricingSyncedAt: current.syncedAt,
       updatedAt: Date.now(),
     }
+  }
+
+  /** 从 sessionId 读完整事件日志（新版 session 的事件不再挂在 session.events 上）。 */
+  async function sessionEvents(sessionId) {
+    if (typeof sessionId !== 'string' || sessionId === '') return undefined
+    const sessionQuery = ctx.get('sessionQuery')
+    if (!sessionQuery || typeof sessionQuery.readSession !== 'function') return undefined
+    const snapshot = await sessionQuery.readSession(sessionId)
+    return Array.isArray(snapshot?.events) ? snapshot.events : undefined
   }
 
   // ---- 命令：/balance ----
@@ -535,7 +557,8 @@ export function apply(ctx, config) {
     description: '查看当前会话的 DeepSeek API 费用估算（人民币）',
     handler: async ({ agent }) => {
       try {
-        return { kind: 'success', text: formatCostText(agent?.session, current) }
+        const events = await sessionEvents(agent?.session?.id)
+        return { kind: 'success', text: formatCostText(events, current) }
       } catch (error) {
         return { kind: 'error', text: `统计费用失败：${error instanceof Error ? error.message : String(error)}` }
       }
@@ -575,7 +598,8 @@ export function apply(ctx, config) {
       if (query === 'cost' || query === 'both') {
         if (exec.agent?.session) {
           try {
-            parts.push(formatCostText(exec.agent.session, current))
+            const events = await sessionEvents(exec.agent.session.id)
+            parts.push(formatCostText(events, current))
           } catch (error) {
             parts.push(`统计费用失败：${error instanceof Error ? error.message : String(error)}`)
           }
@@ -592,23 +616,23 @@ export function apply(ctx, config) {
   ctx.inject(['connection'], (connectionCtx) => {
     const connection = connectionCtx.connection
     if (!connection?.rpc) return
-    connection.rpc.handle('/billing', async (endpoint, payload) => {
+    connection.rpc.handle('/billing', async (endpoint, payload, signal) => {
       try {
         if (endpoint === 'balance') {
-          return { ok: true, value: await balancePayload(undefined) }
+          return { ok: true, value: await balancePayload(signal) }
         }
         if (endpoint === 'cost') {
           const sessionId = payload?.args?.sessionId
-          const session = typeof sessionId === 'string' ? ctx.get('sessions')?.get(sessionId) : undefined
-          if (!session) {
-            return { ok: false, error: { code: 'NO_SESSION', message: `会话不存在或不在内存中：${String(sessionId)}` } }
+          const events = await sessionEvents(sessionId)
+          if (!events) {
+            return { ok: false, error: { code: 'NO_SESSION', message: `会话不存在或无法读取事件日志：${String(sessionId)}`, details: {} } }
           }
-          return { ok: true, value: costPayload(session) }
+          return { ok: true, value: costPayload(events) }
         }
-        return { ok: false, error: { code: 'BAD_ENDPOINT', message: `未知的 billing 端点：${String(endpoint)}` } }
+        return { ok: false, error: { code: 'BAD_ENDPOINT', message: `未知的 billing 端点：${String(endpoint)}`, details: {} } }
       } catch (error) {
-        return { ok: false, error: { code: 'ERROR', message: error instanceof Error ? error.message : String(error) } }
+        return { ok: false, error: { code: 'ERROR', message: error instanceof Error ? error.message : String(error), details: {} } }
       }
-    }, {})
+    })
   })
 }

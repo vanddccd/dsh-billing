@@ -6,9 +6,13 @@
   "description": "DeepSeek Harness plugin: 账户余额 + 会话费用（命令/工具 + Web UI 悬浮显示）",
   "main": "host.js",
   "exports": {
-    ".": "./host.js",
+    ".": {
+      "default": "./host.js"
+    },
     "./host.js": "./host.js",
-    "./client": "./client.js",
+    "./client": {
+      "default": "./client.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -23,7 +27,10 @@
     },
     "client": {
       "platform": "web",
-      "immediately": false
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   },
   "license": "MIT"
