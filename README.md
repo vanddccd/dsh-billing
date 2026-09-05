@@ -19,7 +19,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 ![dsh-billing 三胶囊](./docs/billing-pills.png)
 
 - **余额**：人民币金额（点击刷新，悬停看充值/赠金/美元明细）
-- **会话**：`¥费用(总 token 量)`，费用数字变化带 **Number pop-in 动画**，totalTokens 平铺显示
+- **会话**：`¥费用(总 token 量)`。金额与 token 数字都带 **Number pop-in 动画**，且按链条时序：**金额先逐位弹入，动画结束后 token 数字随后弹入**；会话切换/加载中显示默认 `¥0.00(0)`（不残留上一个会话的数字），金额为 `¥0.00` 时 token 不动画
 - **峰谷时段**：当前高峰/低谷 + 距下次切换的剩余时间
 
 数字变化时逐位从下往上带模糊滑入（[Number pop-in](https://transitions.dev/detail.html?t=number-pop-in)，含 `prefers-reduced-motion` 守卫）。

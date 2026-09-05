@@ -33,15 +33,7 @@ function makeFactory(require) {
       return c.toFixed(2)
     }
 
-    // 会话胶囊内容：费用做 number pop-in；totalTokens 太长，单独平铺显示
-    function sessionNum(costData, costFailed) {
-      if (!costData) return costFailed ? '—' : '…'
-      if (costData.cost <= 0) return h(Digits, { value: '¥0.00' })
-      return h('span', {},
-        h(Digits, { value: `¥${fmtCost(costData.cost)}` }),
-        `(${costData.totalTokens.toLocaleString()})`,
-      )
-    }
+    // 会话胶囊内容由 SessionAmount 组件渲染（金额先 pop-in → tokens 紧随其后）。
 
     // ---- 胶囊样式（用 DSH design token，适配明暗模式）----
     const BILLING_CSS_ID = 'dsh-billing-pills'
@@ -78,6 +70,8 @@ function makeFactory(require) {
       .t-digit-group.is-animating .t-digit { animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both; }
       .t-digit-group.is-animating .t-digit[data-stagger="1"] { animation-delay: var(--digit-stagger); }
       .t-digit-group.is-animating .t-digit[data-stagger="2"] { animation-delay: calc(var(--digit-stagger) * 2); }
+      /* 从属数字（tokens）：时长更短、模糊更小，跟在主数字之后表达层级。 */
+      .t-digit-group--light { --digit-dur: 400ms; --digit-blur: 1px; }
       @media (prefers-reduced-motion: reduce) {
         .t-digit-group .t-digit { animation: none !important; }
       }
@@ -108,10 +102,68 @@ function makeFactory(require) {
 
     function Digits({ value }) {
       const playing = useDigits(value)
+      return h(DigitGroup, { value, playing })
+    }
+
+    /** 逐位 pop-in 数字组（金额与 tokens 共用）：playing 时播放动画；
+     *  light 变体 = 从属数字，时长更短、模糊更小（表达层级）。 */
+    function DigitGroup({ value, playing, light }) {
       return h(
         'span',
-        { className: 't-digit-group' + (playing ? ' is-animating' : '') },
+        { className: 't-digit-group' + (light ? ' t-digit-group--light' : '') + (playing ? ' is-animating' : '') },
         String(value).split('').map((ch, i) => h('span', { key: i, className: 't-digit', 'data-stagger': i > 0 ? String(i) : undefined }, ch)),
+      )
+    }
+
+    /** 从根样式读数值型 CSS 变量（与动画实际时长保持同步）。 */
+    function readMs(name, fallback) {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue(name)
+      const value = Number.parseFloat(raw)
+      return Number.isFinite(value) ? value : fallback
+    }
+
+    // 会话胶囊：金额先 pop-in（Digits 内部 useDigits 驱动），tokens 数字紧接着
+    // 金额动画完成后才开播 —— 链条时序。
+    //   - 切换会话（sessionId 变）：语境重置，tokens 归 0 起步，不残留上个会话
+    //   - 同会话刷新：tokens 停在旧值等金额弹完，再从旧值弹到新值（不闪回 0）
+    //   - 金额为 ¥0.00 / 失败：tokens 不动画（显示 0 / 不渲染）
+    function SessionAmount({ costData, costFailed, sessionId }) {
+      const hasData = costData != null
+      const amount = costFailed
+        ? '—'
+        : !hasData || costData.cost <= 0
+          ? '¥0.00'
+          : `¥${fmtCost(costData.cost)}`
+      const currentTokens = hasData && !costFailed ? costData.totalTokens : 0
+      const [tokensPlaying, setTokensPlaying] = useState(false)
+      const lastAmount = useRef(amount)
+      const lastSession = useRef(sessionId)
+      // 链条未触发时 tokens 显示的"落位值"：切会话重置为 0；同会话刷新保持旧值。
+      const restingTokens = useRef(0)
+      useEffect(() => {
+        if (lastSession.current !== sessionId) {
+          lastSession.current = sessionId
+          restingTokens.current = 0
+        }
+        if (lastAmount.current === amount) return
+        lastAmount.current = amount
+        setTokensPlaying(false)
+        if (costFailed || !hasData || costData.cost <= 0) {
+          restingTokens.current = 0
+          return
+        }
+        // 金额 pop-in 完成时刻 = --digit-dur + (字符数-1)×--digit-stagger
+        const dur = readMs('--digit-dur', 500) + (amount.length - 1) * readMs('--digit-stagger', 70)
+        const timer = window.setTimeout(() => {
+          restingTokens.current = currentTokens
+          setTokensPlaying(true)
+        }, dur + 60)
+        return () => { window.clearTimeout(timer) }
+      }, [amount, sessionId])
+      const tokensValue = tokensPlaying ? currentTokens : restingTokens.current
+      return h('span', {},
+        h(Digits, { value: amount }),
+        !costFailed && h(DigitGroup, { value: `(${tokensValue.toLocaleString()})`, playing: tokensPlaying, light: true }),
       )
     }
 
@@ -300,7 +352,7 @@ function makeFactory(require) {
             style: costFailed ? { opacity: 0.45 } : undefined,
           },
           '会话 ',
-          h('b', { className: 'billing-num' }, sessionNum(costData, costFailed)),
+          h('b', { className: 'billing-num' }, h(SessionAmount, { costData, costFailed, sessionId })),
         ),
         h(
           'span',
@@ -311,7 +363,7 @@ function makeFactory(require) {
           },
           tideLabel,
           ' · ',
-          h('b', { className: 'billing-num ' + (tide.isPeak ? 'billing-warn' : 'billing-ok') }, h(Digits, { value: fmtRemainShort(tide.nextChangeHours) })),
+          h('b', { className: 'billing-num ' + (tide.isPeak ? 'billing-warn' : 'billing-ok') }, fmtRemainShort(tide.nextChangeHours)),
         ),
       )
     }
