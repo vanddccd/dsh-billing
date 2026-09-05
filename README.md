@@ -28,7 +28,8 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 适配当前 dsh alpha（0.1.2-alpha.4）插件 API，并补充峰谷定价与 UI 动画：
 
-- **host.js**：兼容新版 dsh（RPC handle 签名、`sessionQuery` 读取会话事件、官方价格页峰谷解析——修复模型列错位 + 峰谷价表解析）
+- **host.js**：兼容新版 dsh（RPC handle 签名、`sessionQuery` 读取会话事件）
+- **host.js**：价格同步——保留「每 12 小时自动同步 + 启动立即 + 失败重试」机制，并**修复官方价格页解析 bug**（原版本同步机制在跑，但解析出的单价是错的：模型列错位、峰谷价表未解析），使同步结果准确（含峰谷价）
 - **host.js**：新增 2026-08-23 起周末（周六/周日）全天执行低谷价
 - **client.js**：会话头部三胶囊 + 明暗模式适配 + 数字 Number pop-in
 - **package.json / cordis.patch.yml**：条件导出 + `dsh.client.inject` 声明 + 修复 `!!js` 表达式
