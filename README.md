@@ -6,11 +6,32 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 | 入口 | 用法 | 说明 |
 | --- | --- | --- |
-| UI 会话头部双胶囊 | 无需操作，常驻显示 | **余额 + 本会话费用** 并排显示在会话标题旁；点击任一胶囊立即刷新两个 |
+| UI 会话头部三胶囊 | 无需操作，常驻显示 | **余额 + 本会话费用 + 峰谷时段** 并排显示在会话标题旁；点击任一胶囊立即刷新两个 |
 | 悬停明细 | 鼠标悬停 | 余额胶囊：充值/赠金/美元；费用胶囊：按模型的 token 与费用拆分 |
 | 斜杠命令 `/balance` | 聊天框输入 `/balance` | 查询账户余额（人民币优先，附美元） |
 | 斜杠命令 `/cost` | 聊天框输入 `/cost` | 当前会话费用明细 |
 | 工具 `deepseek_billing` | 直接问模型"余额多少/花了多少钱" | query = `balance` / `cost` / `both` |
+
+## 会话头部三胶囊
+
+会话标题旁并排显示三个胶囊（适配 DSH 明暗模式，`--dsw-alias-*` design token）：
+
+![dsh-billing 三胶囊](./docs/billing-pills.png)
+
+- **余额**：人民币金额（点击刷新，悬停看充值/赠金/美元明细）
+- **会话**：`¥费用(总 token 量)`，费用数字变化带 **Number pop-in 动画**，totalTokens 平铺显示
+- **峰谷时段**：当前高峰/低谷 + 距下次切换的剩余时间
+
+数字变化时逐位从下往上带模糊滑入（[Number pop-in](https://transitions.dev/detail.html?t=number-pop-in)，含 `prefers-reduced-motion` 守卫）。
+
+## 本版本适配（新版 dsh alpha）
+
+适配当前 dsh alpha（0.1.2-alpha.4）插件 API，并补充峰谷定价与 UI 动画：
+
+- **host.js**：兼容新版 dsh（RPC handle 签名、`sessionQuery` 读取会话事件、官方价格页峰谷解析——修复模型列错位 + 峰谷价表解析）
+- **host.js**：新增 2026-08-23 起周末（周六/周日）全天执行低谷价
+- **client.js**：会话头部三胶囊 + 明暗模式适配 + 数字 Number pop-in
+- **package.json / cordis.patch.yml**：条件导出 + `dsh.client.inject` 声明 + 修复 `!!js` 表达式
 
 ## 结构
 
