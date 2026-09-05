@@ -38,7 +38,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 - `host.js` — 宿主插件：命令 + 工具 + `/billing/{balance,cost}` RPC 通道（供浏览器胶囊轮询）
 - `client.js` — 浏览器 bundle（`__ModuleLoader__` 工厂格式，仅依赖平台共享的 react，无构建步骤）
-  - `conversation.session.header.actions` 槽位（负数 order = 静态会话上下文）→ 余额 + 会话费用双胶囊
+  - `conversation.session.header.actions` 槽位（负数 order = 静态会话上下文）→ 余额 + 会话费用 + 峰谷时段三胶囊
 - `package.json` — 声明 `dsh.bundle`（空 patch）+ `dsh.client`（web 平台）
 - `cordis.patch.yml` — 空层；本插件由 profile 的 `cordis.patch.yml` 插入行激活
 
@@ -80,13 +80,12 @@ config:
           peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 }
 ```
 
-## 更新频率（事件驱动，空闲零请求）
+## 更新频率（事件驱动）
 
-- **轮次中**：每完成 10 步刷新一次（步号跨过 10 的整数倍时触发）
-- **每轮结束**（turn/end）：刷新一次，结算本轮收尾的步（短轮也靠它结算）
-- **挂载 / 切换会话 / 点击胶囊 / 页面从后台切回可见**：立即刷新
-- **空闲时零请求**：没有定时轮询；只有上述事件发生时才有请求
-- 服务端按需从内存会话日志计算，无后台常驻任务
+- **会话运行结束**（running 由 true → false）：刷新一次，结算本轮
+- **挂载 / 切换会话 / 点击任意胶囊 / 页面从后台切回可见**：立即刷新
+- **空闲时不发网络请求**：不做定时轮询，仅上述事件发生时请求（峰谷时段胶囊每分钟更新一次本地时间，不产生网络请求）
+- 服务端通过 `sessionQuery` 读取会话事件（含历史/持久日志）计算费用，无后台常驻任务
 
 ## 价格自动同步（官方改价怎么办）
 
