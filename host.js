@@ -7,7 +7,8 @@
  *   /cost     查看当前会话的 API 费用估算（人民币）
  *   工具 deepseek_billing —— 让模型自己也能查询余额 / 会话费用
  *
- * 定价：默认内置 DeepSeek 官方 API 单价（2026-08-17 起自动切换峰谷价），
+ * 定价：默认内置 DeepSeek 官方 API 单价（2026-08-17 起峰谷价、周末全天空闲价；
+ * 2026-09-10 12:00 起 flash 系列降价），限时内测模型按定价系列匹配；
  * 可在 profile 的 cordis.patch.yml 里通过 config.pricing 覆盖。
  *
  * 无任何运行时依赖，直接以绝对路径加载。
@@ -25,43 +26,112 @@ const BEIJING_OFFSET_MINUTES = 480
 const DEFAULT_PEAK_WINDOWS = [[9, 12], [14, 18]]
 
 /**
- * 官方单价（人民币 / 百万 tokens）。
- * 2026-08-17 00:00（北京时间）前使用扁平价；之后按峰谷时段计费：
- * 高峰 9:00–12:00、14:00–18:00，其余为闲时。
- * 2026-08-23 00:00（北京时间）起：工作日维持峰谷，周末（周六/周日）全天执行低谷价。
+ * 官方单价（人民币 / 百万 tokens），按「定价系列」组织。
+ *
+ * 历史沿革（北京时间）：
+ *   2026-08-17 00:00 起改为峰谷分时计价：高峰 周一至周五 9:00–12:00、14:00–18:00，其余空闲。
+ *   2026-08-23 起：周末（周六/周日）全天执行空闲价。
+ *   2026-09-10 12:00 起：flash 系列降价（空闲 0.02/1/4，高峰翻倍 0.04/2/8，
+ *     缓存命中降幅 60%）；pro 系列价格不变。
+ *   2026-09-14 12:00 起：V4 Pro 有序下线，deepseek-v4-pro 的请求全部路由到 V4.1 Flash，
+ *     **并按 Flash 价计费**（官方脚注 2）——计费口径随之切到 flash 系列。
+ *
+ * 官方按「系列」定价，故新模型（含改名后的 deepseek-flash、限时内测名）按系列匹配，
+ * 不必等官方价格页收录——价格页只列在售模型。
  * 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
  */
-const DEFAULT_PRICING = {
-  'deepseek-v4-flash': {
-    cacheHit: 0.02, cacheMiss: 1, output: 2,
-    schedules: [{
-      effectiveAt: '2026-08-17T00:00:00+08:00',
-      timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
-      peakWindows: DEFAULT_PEAK_WINDOWS,
-      // 2026-08-23 起官方规则：周末（周六/周日）全天执行低谷价。
-      weekendOffPeak: true,
-      offPeak: { cacheHit: 0.05, cacheMiss: 1.5, output: 4.5 },
-      peak: { cacheHit: 0.1, cacheMiss: 3.0, output: 9.0 },
-    }],
+const FLASH_SERIES_RATES = [
+  {
+    effectiveAt: '2026-08-17T00:00:00+08:00',
+    offPeak: { cacheHit: 0.05, cacheMiss: 1.5, output: 4.5 },
+    peak: { cacheHit: 0.10, cacheMiss: 3.0, output: 9.0 },
   },
-  'deepseek-v4-pro': {
-    cacheHit: 0.025, cacheMiss: 3, output: 6,
-    schedules: [{
-      effectiveAt: '2026-08-17T00:00:00+08:00',
-      timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
-      peakWindows: DEFAULT_PEAK_WINDOWS,
-      // 2026-08-23 起官方规则：周末（周六/周日）全天执行低谷价。
-      weekendOffPeak: true,
-      offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 },
-      peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 },
-    }],
+  {
+    effectiveAt: '2026-09-10T12:00:00+08:00',
+    offPeak: { cacheHit: 0.02, cacheMiss: 1.0, output: 4.0 },
+    peak: { cacheHit: 0.04, cacheMiss: 2.0, output: 8.0 },
   },
-  'deepseek-chat': { cacheHit: 0.2, cacheMiss: 2, output: 3 },
-  'deepseek-reasoner': { cacheHit: 1, cacheMiss: 4, output: 16 },
+]
+
+const PRO_SERIES_RATES = [
+  {
+    effectiveAt: '2026-08-17T00:00:00+08:00',
+    offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 },
+    peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 },
+  },
+  {
+    // 路由变化（非降价）：V4 Pro 下线后 deepseek-v4-pro 按 V4.1 Flash 计费。
+    effectiveAt: '2026-09-14T12:00:00+08:00',
+    offPeak: { cacheHit: 0.02, cacheMiss: 1.0, output: 4.0 },
+    peak: { cacheHit: 0.04, cacheMiss: 2.0, output: 8.0 },
+  },
+]
+
+/**
+ * 定价系列锚点：系列匹配时取该模型条目的单价。
+ * pro 锚点挂 PRO_SERIES_RATES（含 09-14 切 flash 价的档），故 pro 系模型自动跟随；
+ * 用户若显式配置了 deepseek-v4-pro 的 pricing，则按字段级覆盖优先生效。
+ */
+const SERIES_ANCHOR = { flash: 'deepseek-flash', pro: 'deepseek-v4-pro' }
+
+/**
+ * 内置收录的模型 id（官方现行名 + 已下线但仍可调用的旧名）。
+ *   2026-09-10 起官方推荐名 deepseek-flash；旧名 deepseek-v4-flash、
+ *   deepseek-v4-flash-vision-exp 仍可调用，请求由 V4.1-Flash 提供服务、按 Flash 价计费。
+ */
+const SERIES_MODELS = {
+  flash: [
+    'deepseek-flash',
+    'deepseek-v4-flash',
+    'deepseek-v4-flash-vision-exp',
+    'deepseek-v4.1-flash-expires-on-0910',
+  ],
+  pro: ['deepseek-v4-pro'],
 }
 
-/** 未配置单价的模型使用的兜底单价（同 deepseek-v4-pro 扁平价）。 */
-const DEFAULT_FALLBACK_PRICE = { cacheHit: 0.025, cacheMiss: 3, output: 6 }
+/** 由价目表构造一条 schedule（峰谷窗口 + 周末空闲）。 */
+function makeSchedule(effectiveAt, offPeak, peak) {
+  return {
+    effectiveAt,
+    timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
+    peakWindows: DEFAULT_PEAK_WINDOWS.map((window) => [...window]),
+    // 官方规则：周六/周日全天执行空闲价。
+    weekendOffPeak: true,
+    offPeak: { ...offPeak },
+    peak: { ...peak },
+  }
+}
+
+/** 由历史价目表构造模型条目：顶层扁平价 = 最新一档空闲价（无 schedule 时的基准）。 */
+function buildSeriesEntry(rates) {
+  const schedules = rates.map((rate) => makeSchedule(rate.effectiveAt, rate.offPeak, rate.peak))
+  const latest = rates[rates.length - 1]
+  return { ...latest.offPeak, schedules }
+}
+
+const DEFAULT_PRICING = {}
+for (const model of SERIES_MODELS.flash) DEFAULT_PRICING[model] = buildSeriesEntry(FLASH_SERIES_RATES)
+for (const model of SERIES_MODELS.pro) DEFAULT_PRICING[model] = buildSeriesEntry(PRO_SERIES_RATES)
+
+/**
+ * 旧模型：官方价格页已下架，仅历史会话可能命中，保留但**不随系列调价**（deprecated）。
+ */
+DEFAULT_PRICING['deepseek-chat'] = { cacheHit: 0.2, cacheMiss: 2, output: 3 }
+DEFAULT_PRICING['deepseek-reasoner'] = { cacheHit: 1, cacheMiss: 4, output: 16 }
+
+/**
+ * 未识别模型的兜底单价：钉死在 pro 系列的最高价（宁可略高估，不可低估）。
+ * 刻意**不**复用 PRO_SERIES_RATES——那份价目在 2026-09-14 12:00 会因 V4 Pro 下线
+ * 而切到 flash 价位；兜底价若跟着降，等于把「未知模型」往低估方向带。
+ * deepseek-* 的 flash/pro 系列模型走系列匹配，不会落到这里。
+ */
+const DEFAULT_FALLBACK_PRICE = buildSeriesEntry([
+  {
+    effectiveAt: '2026-08-17T00:00:00+08:00',
+    offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 },
+    peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 },
+  },
+])
 
 const DEFAULT_CONFIG = {
   apiKeyEnv: DEFAULT_API_KEY_ENV,
@@ -78,6 +148,22 @@ const DEFAULT_PRICE_SYNC = {
   timeoutMs: 15000,
 }
 
+/**
+ * 单元格文本规范化。用于**匹配**（不用于取值）：
+ *   1. `<br>` 变体（`<br>`、`<br/>`、`<br />`）剥成空串——官方用 `<br>` 做指标列折行，
+ *      若剥成空格会让「百万tokens输入（缓存命中）」匹配失败；
+ *   2. 其余标签剥成空串；
+ *   3. `&nbsp;` / 全角空格 / 连续空白折叠成单个半角空格，去首尾。
+ */
+function normalizeCell(html) {
+  return String(html)
+    .replace(/<br\s*\/?>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;|&#160;|\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** 把 HTML 解析成 {行: [单元格文本]} 的表格列表（剥掉标签，容忍空白）。 */
 export function htmlTables(html) {
   const tables = []
@@ -86,18 +172,29 @@ export function htmlTables(html) {
     for (const tr of table[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
       const cells = []
       for (const cell of tr[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)) {
-        const text = cell[1]
-          .replace(/<[^>]+>/g, '')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\u00a0/g, ' ')
-          .trim()
-        cells.push(text)
+        cells.push(normalizeCell(cell[1]))
       }
       if (cells.length > 0) rows.push(cells)
     }
     if (rows.length > 0) tables.push(rows)
   }
   return tables
+}
+
+/**
+ * 从表头单元格里取出模型 id，容忍官方页的脚注角标与排版噪声。
+ *   官方写法：`deepseek-flash<sup>(1)</sup>` → `deepseek-flash(1)`
+ *   历史上出现过：`deepseek-chat`、`deepseek-v4-pro*`、`deepseek-flash （1）`
+ * 返回 null 表示该单元格不是模型列（如「模型」表头本身）。
+ */
+export function modelIdFromHeaderCell(cell) {
+  const cleaned = normalizeCell(cell)
+    .replace(/[（(]\s*\d*\s*[）)]/g, '') // 脚注角标 (1) （2）
+    .replace(/\[\d+\]/g, '')
+    .replace(/[*＊†‡]+/g, '')
+    .trim()
+    .toLowerCase()
+  return /^deepseek-[a-z0-9][\w.-]*$/.test(cleaned) ? cleaned : null
 }
 
 function parseYuan(text) {
@@ -114,12 +211,15 @@ export function parsePricingHtml(html) {
   const models = {}
 
   // 1. 找模型列顺序（表头行里的 deepseek-* 单元格，按出现顺序）。
+  //    官方现行表头：`模型 | deepseek-flash(1) | deepseek-v4-pro(2)`——模型名自带脚注角标，
+  //    故用 modelIdFromHeaderCell 归一化后再取，不能直接对整串做正则（历史上正是这里导致同步静默失效）。
   let modelOrder = []
   for (const rows of tables) {
     const header = rows[0] ?? []
     const cols = []
     for (const cell of header) {
-      if (/^deepseek-[\w.-]+$/.test(cell)) cols.push(cell)
+      const id = modelIdFromHeaderCell(cell)
+      if (id) cols.push(id)
     }
     if (cols.length > 0) { modelOrder = cols; break }
   }
@@ -139,21 +239,24 @@ export function parsePricingHtml(html) {
 
   for (const rows of tables) {
     for (const row of rows) {
+      // 单元格先归一化（统一全角括号/空格、剥标签），再与标签比对——
+      // 官方指标列写作 `百万tokens输入<br>（缓存命中）`。
+      const cells = row.map((c) => normalizeCell(c))
       for (const [label, field] of METRIC_LABELS) {
-        if (row.includes(label)) { currentMetric = field; break }
+        if (cells.includes(label)) { currentMetric = field; break }
       }
       if (currentMetric === null) continue
 
       let target = null
       let priceStart = -1
-      const idleIdx = row.indexOf('空闲时段')
-      const peakIdx = row.indexOf('高峰时段')
+      const idleIdx = cells.indexOf('空闲时段')
+      const peakIdx = cells.indexOf('高峰时段')
       if (idleIdx >= 0) { target = offPeak; priceStart = idleIdx + 1 }
       else if (peakIdx >= 0) { target = peak; priceStart = peakIdx + 1 }
       if (target === null) continue
 
       for (let i = 0; i < modelOrder.length; i++) {
-        const price = parseYuan(row[priceStart + i])
+        const price = parseYuan(cells[priceStart + i])
         if (!Number.isFinite(price)) continue
         const model = modelOrder[i]
         if (!target[model]) target[model] = {}
@@ -162,11 +265,9 @@ export function parsePricingHtml(html) {
     }
   }
 
-  // 3. 组装 models：空闲价作为顶层基准价，峰谷价写入 schedules。
-  //    价格页未给生效日期（当前已处于峰谷价生效期），沿用 2026-08-17 生效日；
-  //    2026-08-23 起周末（周六/周日）全天执行低谷价。
-  const EFFECTIVE_AT = '2026-08-17T00:00:00+08:00'
-  const PEAK_WINDOWS = [[9, 12], [14, 18]]
+  // 3. 组装：每个模型必须同时有空闲价与高峰价，否则丢弃。
+  //    这里只产出「当前价」，不写生效时间——生效时间由调用方按「首次观察到该价」决定，
+  //    否则官方改价会回溯改写历史会话的成本。
   for (const model of modelOrder) {
     const off = offPeak[model]
     const pk = peak[model]
@@ -174,35 +275,77 @@ export function parsePricingHtml(html) {
     if (![off.cacheHit, off.cacheMiss, off.output].every(Number.isFinite)) continue
     if (![pk.cacheHit, pk.cacheMiss, pk.output].every(Number.isFinite)) continue
     models[model] = {
-      cacheHit: off.cacheHit,
-      cacheMiss: off.cacheMiss,
-      output: off.output,
-      schedules: [{
-        effectiveAt: EFFECTIVE_AT,
-        timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES,
-        peakWindows: PEAK_WINDOWS,
-        weekendOffPeak: true,
-        offPeak: { cacheHit: off.cacheHit, cacheMiss: off.cacheMiss, output: off.output },
-        peak: { cacheHit: pk.cacheHit, cacheMiss: pk.cacheMiss, output: pk.output },
-      }],
+      offPeak: { cacheHit: off.cacheHit, cacheMiss: off.cacheMiss, output: off.output },
+      peak: { cacheHit: pk.cacheHit, cacheMiss: pk.cacheMiss, output: pk.output },
     }
   }
 
   if (Object.keys(models).length === 0) return null
-  return { models, schedule: { effectiveAt: EFFECTIVE_AT, timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES, peakWindows: PEAK_WINDOWS, weekendOffPeak: true } }
+  return { models }
+}
+
+/** 深拷贝模型条目（避免 schedules 数组在多次合成间共享）。 */
+function cloneEntry(entry) {
+  const copy = { ...entry }
+  if (Array.isArray(entry.schedules)) {
+    copy.schedules = entry.schedules.map((sched) => ({
+      ...sched,
+      peakWindows: Array.isArray(sched.peakWindows) ? sched.peakWindows.map((w) => [...w]) : sched.peakWindows,
+      offPeak: { ...sched.offPeak },
+      peak: { ...sched.peak },
+    }))
+  }
+  return copy
+}
+
+function sameRate(a, b) {
+  if (!a || !b) return false
+  return a.cacheHit === b.cacheHit && a.cacheMiss === b.cacheMiss && a.output === b.output
 }
 
 /**
  * 分层合成最终单价表：内置默认 ← 官方在线 ← 用户显式配置（字段级）。
- * @param {object} synced 在线解析结果（可为 null）
- * @param {object} userPricing 用户在配置里显式写的 pricing（原始值）
+ *
+ * 在线同步到的价若与内置最新一档不同，就作为**新的一条 schedule 追加**，
+ * 生效时间取「首次观察到该价的同步时刻」（observedAt），
+ * 这样官方改价只影响之后的请求，不会回溯改写历史会话成本。
+ *
+ * @param {{models: Record<string, {offPeak: object, peak: object}>}|null} synced 在线解析结果（可为 null）
+ * @param {object} [userPricing] 用户在配置里显式写的 pricing（原始值）
+ * @param {number} [observedAt] 本次同步时刻（ms）；缺省用当前时间
  */
-export function layerPricing(synced, userPricing) {
+export function layerPricing(synced, userPricing, observedAt) {
   const next = {}
-  for (const [model, entry] of Object.entries(DEFAULT_PRICING)) next[model] = { ...entry }
-  if (synced) {
-    for (const [model, entry] of Object.entries(synced.models)) next[model] = entry
+  for (const [model, entry] of Object.entries(DEFAULT_PRICING)) next[model] = cloneEntry(entry)
+
+  if (synced?.models) {
+    const observed = Number.isFinite(observedAt) ? observedAt : Date.now()
+    for (const [model, entry] of Object.entries(synced.models)) {
+      const existing = next[model]
+      if (!existing) {
+        // 官方价格页新收录的模型：无历史价，以同步时刻为起点建条目。
+        next[model] = {
+          ...entry.offPeak,
+          schedules: [makeSchedule(new Date(observed).toISOString(), entry.offPeak, entry.peak)],
+        }
+        continue
+      }
+      const schedules = [...(existing.schedules ?? [])]
+      // 官方价格页反映的是「此刻生效的价」，故与 observedAt 时刻生效的那一档比较，
+      // 而不是与最新一档比较——内置表可能已预置未来的降价档。
+      const active = schedules
+        .filter((sched) => new Date(sched.effectiveAt).getTime() <= observed)
+        .sort((a, b) => new Date(a.effectiveAt).getTime() - new Date(b.effectiveAt).getTime())
+        .at(-1) ?? null
+      if (active && sameRate(active.offPeak, entry.offPeak) && sameRate(active.peak, entry.peak)) continue
+      // 页面价与已知档不符：以官方为准追加一条并从此刻接管，
+      // 同时丢弃所有「预置的未来档」（它们基于公告或猜测，已被官方实际价证伪）。
+      const kept = schedules.filter((sched) => new Date(sched.effectiveAt).getTime() <= observed)
+      kept.push(makeSchedule(new Date(observed).toISOString(), entry.offPeak, entry.peak))
+      next[model] = { ...existing, ...entry.offPeak, schedules: kept }
+    }
   }
+
   for (const [model, entry] of Object.entries(userPricing ?? {})) {
     next[model] = { ...(next[model] ?? {}), ...entry }
   }
@@ -216,15 +359,15 @@ export function mergeConfig(config) {
   for (const [model, entry] of Object.entries(DEFAULT_PRICING)) {
     const userEntry = raw.pricing?.[model]
     pricing[model] = userEntry
-      ? { ...entry, ...userEntry }
-      : { ...entry }
+      ? { ...cloneEntry(entry), ...userEntry }
+      : cloneEntry(entry)
   }
   for (const [model, entry] of Object.entries(raw.pricing ?? {})) {
     if (!(model in pricing)) pricing[model] = { ...entry }
   }
   const fallbackPrice = raw.fallbackPrice
-    ? { ...DEFAULT_FALLBACK_PRICE, ...raw.fallbackPrice }
-    : { ...DEFAULT_FALLBACK_PRICE }
+    ? { ...cloneEntry(DEFAULT_FALLBACK_PRICE), ...raw.fallbackPrice }
+    : cloneEntry(DEFAULT_FALLBACK_PRICE)
   return {
     apiKeyEnv: typeof raw.apiKeyEnv === 'string' && raw.apiKeyEnv ? raw.apiKeyEnv : DEFAULT_API_KEY_ENV,
     baseURL: typeof raw.baseURL === 'string' && raw.baseURL ? raw.baseURL : PUBLIC_BASE_URL,
@@ -250,12 +393,54 @@ export function rateAt(pricingEntry, timeMs) {
   if (active.weekendOffPeak === true && (weekday === 0 || weekday === 6)) {
     return { rate: active.offPeak, mode: 'off-peak' }
   }
-  const hour = shifted.getUTCHours()
+  // 峰谷判定必须精确到分钟：官方高峰结束时刻是整点闭区间（12:00、18:00），
+  // 若只比小时会把 12:00/14:00/18:00 这类边界整点判错档，一次请求就差一倍价。
+  const minutes = shifted.getUTCHours() * 60 + shifted.getUTCMinutes()
   const windows = Array.isArray(active.peakWindows) && active.peakWindows.length > 0
     ? active.peakWindows
     : DEFAULT_PEAK_WINDOWS
-  const inPeak = windows.some(([start, end]) => hour >= start && hour < end)
+  const inPeak = windows.some(([start, end]) => minutes >= start * 60 && minutes < end * 60)
   return { rate: inPeak ? active.peak : active.offPeak, mode: inPeak ? 'peak' : 'off-peak' }
+}
+
+/**
+ * 峰谷状态（供 Web UI 胶囊）。判定权在宿主，客户端只负责显示——
+ * 客户端原本按 UTC+8 自行推算，一旦两边时区/规则口径不一致就会显示与实际计费不符的时段。
+ *
+ * @param {object} [pricingCtx] 当前定价上下文（含活跃模型的 schedules）
+ * @param {number} [nowMs] 判定时刻，缺省取当前时间
+ */
+export function resolveTide(pricingCtx, nowMs) {
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now()
+  const entry = resolvePricing('deepseek-flash', pricingCtx?.pricing ?? {})?.entry ?? pricingCtx?.fallbackPrice
+  const { mode } = rateAt(entry, now)
+  // flat 表示该价目没有峰谷档（不该发生，除非用户把 schedules 配没了）。
+  // 此时返回 null，让客户端回退到内置规则自算——不能假装成「低谷」。
+  if (mode === 'flat') {
+    return { isPeak: null, mode, ...tideWindows(entry, now), updatedAt: now }
+  }
+  return {
+    isPeak: mode === 'peak',
+    mode,
+    // 一并下发窗口与周末规则：客户端 RPC 失败时可按同一份窗口降级自算，避免硬编码口径漂移。
+    ...tideWindows(entry, now),
+    updatedAt: now,
+  }
+}
+
+/** 取 now 时刻生效档的峰谷窗口（毫秒区间，用于客户端展示与兜底自算）。 */
+function tideWindows(entry, now) {
+  let active = null
+  for (const sched of entry?.schedules ?? []) {
+    const at = new Date(sched.effectiveAt).getTime()
+    if (Number.isFinite(at) && now >= at && (!active || at > new Date(active.effectiveAt).getTime())) active = sched
+  }
+  if (!active) return { windowsHours: DEFAULT_PEAK_WINDOWS.map((w) => [...w]), weekendOffPeak: false, timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES }
+  return {
+    windowsHours: (Array.isArray(active.peakWindows) && active.peakWindows.length > 0 ? active.peakWindows : DEFAULT_PEAK_WINDOWS).map((w) => [...w]),
+    weekendOffPeak: active.weekendOffPeak === true,
+    timezoneOffsetMinutes: Number.isFinite(active.timezoneOffsetMinutes) ? active.timezoneOffsetMinutes : BEIJING_OFFSET_MINUTES,
+  }
 }
 
 function stepKey(turn, step) {
@@ -306,6 +491,34 @@ export function collectUsage(events) {
   return steps
 }
 
+/**
+ * 模型 id → 定价系列。官方按系列定价，故限时内测模型（如 deepseek-v4.1-flash-*）
+ * 也能归到所属系列，不必等官方价格页收录。
+ */
+export function pricingSeries(bareModel) {
+  const id = String(bareModel ?? '').toLowerCase()
+  if (!id.startsWith('deepseek-')) return null
+  if (id.includes('pro')) return 'pro'
+  if (id.includes('flash')) return 'flash'
+  return null
+}
+
+/**
+ * 查模型单价条目：精确命中优先，否则按系列锚点匹配。
+ * @returns {{entry: object, matched: 'exact'|'series'}|null}
+ */
+export function resolvePricing(bareModel, pricing) {
+  if (bareModel && Object.prototype.hasOwnProperty.call(pricing, bareModel)) {
+    return { entry: pricing[bareModel], matched: 'exact' }
+  }
+  const series = pricingSeries(bareModel)
+  const anchor = series ? SERIES_ANCHOR[series] : null
+  if (anchor && Object.prototype.hasOwnProperty.call(pricing, anchor)) {
+    return { entry: pricing[anchor], matched: 'series' }
+  }
+  return null
+}
+
 /** 按模型聚合用量并计算费用（人民币）。 */
 export function summarize(usageSteps, config, nowMs) {
   const byModel = new Map()
@@ -315,7 +528,7 @@ export function summarize(usageSteps, config, nowMs) {
     const bareModel = model === '(unknown)' ? model : (model.includes(':') ? model.slice(model.lastIndexOf(':') + 1) : model)
     let agg = byModel.get(model)
     if (!agg) {
-      agg = { model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0, cost: 0, priced: false }
+      agg = { model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0, cost: 0, priced: false, matched: null }
       byModel.set(model, agg)
     }
     const input = bucket.usage.inputTokens ?? 0
@@ -325,10 +538,13 @@ export function summarize(usageSteps, config, nowMs) {
     agg.cacheReadTokens += cache
     agg.outputTokens += output
     agg.steps += 1
-    const pricingEntry = bareModel in config.pricing ? config.pricing[bareModel] : null
-    const { rate } = rateAt(pricingEntry ?? config.fallbackPrice, bucket.time ?? nowMs)
+    const resolved = resolvePricing(bareModel, config.pricing)
+    const { rate } = rateAt(resolved?.entry ?? config.fallbackPrice, bucket.time ?? nowMs)
     agg.cost += (input * (rate.cacheMiss ?? 0) + cache * (rate.cacheHit ?? 0) + output * (rate.output ?? 0)) / 1e6
-    if (pricingEntry) agg.priced = true
+    if (resolved) {
+      agg.priced = true
+      agg.matched = agg.matched ?? resolved.matched
+    }
   }
   return [...byModel.values()].sort((a, b) => a.model.localeCompare(b.model))
 }
@@ -357,7 +573,7 @@ export function formatCostText(events, pricingCtx) {
     )
   }
   lines.push('', `合计：¥${fmtMoney(total)}`)
-  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价，2026-08-23 起周末全天低谷价）；子代理是独立会话，各自单独统计。')
+  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价、周末全天空闲价；2026-09-10 12:00 起 flash 系列降价）；子代理是独立会话，各自单独统计。')
   const src = pricingCtx?.source === 'online'
     ? `单价来源：官方在线同步${pricingCtx.syncedAt ? `（${new Date(pricingCtx.syncedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}）` : ''}`
     : '单价来源：内置默认（官方在线同步不可用，若官方改价请手动更新配置）'
@@ -426,13 +642,15 @@ export function apply(ctx, config) {
     try {
       const response = await fetch(priceSync.url, { signal: withTimeout(undefined, priceSync.timeoutMs) })
       if (!response.ok) throw new Error(`价格页返回 HTTP ${response.status}`)
+      const observedAt = Date.now()
       const parsed = parsePricingHtml(await response.text())
       if (!parsed) throw new Error('价格页解析不到任何模型价格')
       current = {
-        pricing: layerPricing(parsed, userPricing),
+        // observedAt 作为「首次观察到该价」的生效时间：官方改价只影响之后的请求，不回溯历史会话。
+        pricing: layerPricing(parsed, userPricing, observedAt),
         fallbackPrice: cfg.fallbackPrice,
         source: 'online',
-        syncedAt: Date.now(),
+        syncedAt: observedAt,
       }
       ctx.logger?.info?.('deepseek-billing: 官方单价已同步（%d 个模型）', Object.keys(parsed.models).length)
       return true
@@ -628,6 +846,9 @@ export function apply(ctx, config) {
             return { ok: false, error: { code: 'NO_SESSION', message: `会话不存在或无法读取事件日志：${String(sessionId)}`, details: {} } }
           }
           return { ok: true, value: costPayload(events) }
+        }
+        if (endpoint === 'tide') {
+          return { ok: true, value: resolveTide(current, Date.now()) }
         }
         return { ok: false, error: { code: 'BAD_ENDPOINT', message: `未知的 billing 端点：${String(endpoint)}`, details: {} } }
       } catch (error) {

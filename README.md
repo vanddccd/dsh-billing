@@ -19,10 +19,37 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 ![dsh-billing 三胶囊](./docs/billing-pills.png)
 
 - **余额**：人民币金额（点击刷新，悬停看充值/赠金/美元明细）
-- **会话**：`¥费用(总 token 量)`。金额与 token 数字都带 **Number pop-in 动画**，且按链条时序：**金额先逐位弹入，动画结束后 token 数字随后弹入**；会话切换/加载中显示默认 `¥0.00(0)`（不残留上一个会话的数字），金额为 `¥0.00` 时 token 不动画
+- **会话**：`¥费用(总 token 量)`。金额与 token 数字都带 **NumberFlow 逐位滚动动画**，且按链条时序：**金额先滚动，滚动结束后 token 数字随后滚动**；会话切换/加载中显示默认 `¥0.00(0)`（不残留上一个会话的数字），金额为 `¥0.00` 时 token 不动画
 - **峰谷时段**：当前高峰/低谷 + 距下次切换的剩余时间
 
-数字变化时逐位从下往上带模糊滑入（[Number pop-in](https://transitions.dev/detail.html?t=number-pop-in)，含 `prefers-reduced-motion` 守卫）。
+数字变化时逐位滚动（[NumberFlow](https://number-flow.barvian.me)，odometer 式：**只滚动值变化的位，未变的位静止**），含 `prefers-reduced-motion` 守卫（NumberFlow 内置 `respectMotionPreference`）。
+
+## 0.6.0：对齐官方现行价与模型下线计划（2026-09-11 校准）
+
+官方依据（定价页脚注原文）：
+- 推荐模型名改为 **`deepseek-flash`**；旧名 `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 已下线，仍可调用但由 V4.1-Flash 提供服务、**按 Flash 价计费**
+- **V4 Pro 有序下线**：北京时间 **2026-09-14 12:00 之后**，`deepseek-v4-pro` 的请求全部路由到 V4.1 Flash，**并按 V4.1 Flash 价计费**
+- 高峰定义：北京时间**周一至周五** 9:00–12:00、14:00–18:00，其余（含周末全天）为空闲；空闲价 = 高峰价的一半
+
+本版本改动：
+
+- **修掉「在线同步静默失效」**（关键）：官方表头写作 `deepseek-flash<sup>(1)</sup>`，剥标签后是 `deepseek-flash(1)`，旧解析器要求整串正则匹配 → 模型列识别为空 → 每次同步都返回 null。**同步机制一直在跑，但从未生效过**，费用一直吃内置硬编码表。现改为归一化后取模型名（容忍脚注角标 `(1)`、`[*]`、大小写），指标列也容忍 `<br>` 折行，同步真正生效
+- **内置表补官方现行名**：新增 `deepseek-flash` 精确键（此前只靠 id 含 "flash" 命中系列锚点才碰巧算对）；`deepseek-v4-flash*` 归 flash 系列（官方口径同价）
+- **预置 2026-09-14 12:00 v4-pro 按 Flash 价计费**：pro 系列新增一档，到点自动从 `0.30 / 9 / 27` 切到 `0.04 / 2 / 8`（空闲档 `0.15 / 4.5 / 13.5` → `0.02 / 1 / 4`）。不预置的话 9-14 之后 v4-pro 会**高估约 3.4 倍**
+- **兜底价钉死**：仍为 pro 最高价 `0.15 / 4.5 / 13.5`，且**不再复用 pro 系列价目**——否则 9-14 会跟着降到 flash 价，把「未知模型」往低估方向带
+- **峰谷判定改为分钟粒度**：窗口端点 12:00 / 18:00 是闭区间起点，旧的「只比小时」实现与新的分钟实现在**当前整点窗口下结果等价**（严谨性提升，为将来分钟级窗口预留）
+- **客户端不再自己编时段口径**：峰谷窗口改由宿主 `/billing/tide` 下发（含 `weekendOffPeak`、时区偏移），客户端随分钟自算翻转；宿主判定权与客户端展示口径同源，杜绝两边漂移
+- **新增 `scripts/verify-pricing.mjs`**：36 项断言（解析器 / 内置价表 / 峰谷边界 / 同步幂等不回溯 / tide 载荷 / 真实会话回归），改价或改代码后一条命令回归
+
+## 0.5.0：定价对齐官方最新价（2026-09-09 校准）
+
+- **内置价表按「定价系列」组织**：flash 系列（官方现行名 `deepseek-flash`，以及已下线但仍可调用的 `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp`、限时内测的 `deepseek-v4.1-flash-*`）与 pro 系列各自维护历史价目
+- **补全本机在用模型**：`deepseek-v4-flash-vision-exp`、`deepseek-v4.1-flash-expires-on-0910`——此前未收录，会话费用一直按兜底价估算（`/cost` 会标「未配置单价」）
+- **系列匹配**：官方按系列定价，故官方价格页尚未收录的内测模型（如 `deepseek-v4.1-flash`）自动归入所属系列，不再落兜底价
+- **预置 2026-09-10 12:00 flash 系列降价**：空闲 `0.02 / 1 / 4`，高峰 `0.04 / 2 / 8`（缓存命中降幅 60%），到点自动切换，无需改代码
+- **兜底价**：钉死为 pro 最高价（`0.15 / 4.5 / 13.5`；高峰 `0.30 / 9 / 27`）：未知模型宁可略高估，不低估。**刻意不跟随 pro 系列价目**，免得 9-14 后连带下调
+- **在线同步不再回溯历史**：同步到的价作为「首次观察时刻起生效」的新档追加，官方改价只影响之后的请求
+- **旧模型** `deepseek-chat` / `deepseek-reasoner` 保留（官方价格页已下架），仅历史会话可能命中，不随系列调价
 
 ## 本版本适配（新版 dsh alpha）
 
@@ -31,14 +58,17 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 - **host.js**：兼容新版 dsh（RPC handle 签名、`sessionQuery` 读取会话事件）
 - **host.js**：价格同步——保留「每 12 小时自动同步 + 启动立即 + 失败重试」机制，并**修复官方价格页解析 bug**（原版本同步机制在跑，但解析出的单价是错的：模型列错位、峰谷价表未解析），使同步结果准确（含峰谷价）
 - **host.js**：新增 2026-08-23 起周末（周六/周日）全天执行低谷价
-- **client.js**：会话头部三胶囊 + 明暗模式适配 + 数字 Number pop-in
+- **client.js**：会话头部三胶囊 + 明暗模式适配 + 数字 NumberFlow 逐位滚动
 - **package.json / cordis.patch.yml**：条件导出 + `dsh.client.inject` 声明 + 修复 `!!js` 表达式
 
 ## 结构
 
-- `host.js` — 宿主插件：命令 + 工具 + `/billing/{balance,cost}` RPC 通道（供浏览器胶囊轮询）
-- `client.js` — 浏览器 bundle（`__ModuleLoader__` 工厂格式，仅依赖平台共享的 react，无构建步骤）
+- `host.js` — 宿主插件：命令 + 工具 + `/billing/{balance,cost,tide}` RPC 通道（供浏览器胶囊读取）
+- `client.js` — 浏览器 bundle（**构建产物**，`__ModuleLoader__` 工厂格式，仅依赖平台共享的 react；NumberFlow 已内联）
+- `client/src/` — 客户端源码（`index.tsx` 主组件 / `rolling.tsx` NumberFlow 封装 / `format.ts` 金额位数 / `tide.ts` 峰谷兜底自算 / `pills.css`）
+- `scripts/build.sh` — 构建脚本：esbuild 打包 `client/src/index.tsx` → `client.js`
   - `conversation.session.header.actions` 槽位（负数 order = 静态会话上下文）→ 余额 + 会话费用 + 峰谷时段三胶囊
+- `scripts/verify-pricing.mjs` — 定价回归脚本（`node scripts/verify-pricing.mjs`），官方页在线抓取，失败回退本地缓存
 - `package.json` — 声明 `dsh.bundle`（空 patch）+ `dsh.client`（web 平台）
 - `cordis.patch.yml` — 空层；本插件由 profile 的 `cordis.patch.yml` 插入行激活
 
@@ -51,7 +81,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 dsh plugin --profile web add ./deepseek-billing
 
 # 或从打包产物安装（跨机器分发推荐）
-dsh plugin --profile web add ./dsh-billing-0.2.0.tgz
+dsh plugin --profile web add ./dsh-billing-0.5.0.tgz
 
 # 或从 npm / git 安装（发布后）
 dsh plugin --profile web add dsh-billing
@@ -69,13 +99,14 @@ dsh plugin --profile web add github:you/dsh-billing
 config:
   pricing:
     deepseek-v4-pro:
-      cacheHit: 0.025
-      cacheMiss: 3
-      output: 6
+      cacheHit: 0.15
+      cacheMiss: 4.5
+      output: 13.5
       schedules:
         - effectiveAt: '2026-08-17T00:00:00+08:00'
           timezoneOffsetMinutes: 480
           peakWindows: [[9, 12], [14, 18]]
+          weekendOffPeak: true
           offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 }
           peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 }
 ```
@@ -89,7 +120,10 @@ config:
 
 ## 价格自动同步（官方改价怎么办）
 
-- 启动时 + 每 12 小时自动拉取官方价格页（https://api-docs.deepseek.com/zh-cn/quick_start/pricing/）解析最新单价（含峰谷价与生效时间）
+- 启动时 + 每 12 小时自动拉取官方价格页（https://api-docs.deepseek.com/zh-cn/quick_start/pricing/）解析最新单价（含峰谷价）
+- **模型列识别需容错**：官方表头把模型名写成 `deepseek-flash<sup>(1)</sup>`（脚注角标），指标列用 `<br>` 折行。0.6.0 前解析器要求整串精确匹配 → 模型列为空 → 同步静默返回 null（机制在跑，但从未生效）。改价后若发现「单价来源：内置默认」，先怀疑这里
+- **生效时间口径**：同步到的价以「首次观察到它的同步时刻」生效（新追加一档），官方改价不会回溯改写历史会话的费用
+- **预置未来档**：内置价表可预置已知的降价/路由档（如 2026-09-10 12:00 的 flash 降价、2026-09-14 12:00 的 v4-pro 按 Flash 价），到点自动切换；若官方价格页显示的价与当前生效档不符，则以官方为准并丢弃已被证伪的预置未来档
 - 解析失败自动回退：上次成功在线值 → 内置默认值；费用输出会标注当前来源与同步时间
 - 优先级：**用户显式配置 > 官方在线同步 > 内置默认**（用户对某个模型写过 pricing 就永远以它为准）
 - 可在 `config.priceSync` 关闭或调整：`{ enabled: true, url: "...", intervalMs: 43200000 }`
@@ -97,14 +131,18 @@ config:
 ## 计费口径
 
 - token 取自会话日志中 provider 上报的 `usage`（含缓存命中拆分；失败重试也计入）
-- 单价内置官方价格，2026-08-17 起自动按北京时间峰谷价
+- 单价内置官方价格：2026-08-17 起按北京时间峰谷价（**高峰＝周一至周五 9:00–12:00、14:00–18:00，其余含周末全天空闲**；空闲价 = 高峰价的一半），2026-09-10 12:00 起 flash 系列降价，2026-09-14 12:00 起 v4-pro 按 Flash 价计费
+- 峰谷判定**分钟粒度**，窗口端点（12:00 / 18:00）为闭区间起点
+- 模型按「定价系列」匹配（flash / pro），官方价格页未收录的内测模型也能算准
 - 子代理是独立会话，各自单独统计
 - 输出为估算值，实际扣费以 DeepSeek 官方账单为准
 
 ## 维护提示
 
-- 改 `client.js` 后：客户端 HMR 会自动更新，刷新页面必生效
-- 改 `host.js` 后：若热重载未生效（Node ESM 缓存），可改文件名/包名触发重导入，或重启 `dsh web`
+- 改 `client/src/*` 后：先 `bash scripts/build.sh` 重新构建 `client.js`（**勿手改产物**），再刷新页面
+- 构建依赖 `@number-flow/react`（`npm install`，仅构建时需要，产物已内联）
+- 改 `host.js` 后：跑 `node scripts/verify-pricing.mjs` 回归（在线抓官方页，失败用缓存），再重启 `dsh web`；若热重载未生效（Node ESM 缓存），可改文件名/包名触发重导入
+- 官方改价后的处理顺序：跑回归脚本看 A 段解析结果 → 若官方价与内置最新档不一致，同步机制会自动追加新档；若是**未来生效**的公告价（下线/降价计划），则手工预置一条 schedule 档更稳
 
 官方文档：
 - 查询余额：https://api-docs.deepseek.com/zh-cn/api/get-user-balance/

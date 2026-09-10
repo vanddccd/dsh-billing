@@ -1,0 +1,125 @@
+// dsh-billing 定价回归验证：node scripts/verify-pricing.mjs
+// 覆盖：官方价格页解析 / 内置价表与系列匹配 / 峰谷边界 / 同步幂等与不回溯 / tide RPC 载荷 / 真实会话回归
+// 官方页优先在线抓取，失败则回退本地缓存（--cache <path>）或跳过解析段。
+import * as M from '../host.js'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execSync } from 'node:child_process'
+
+const PRICING_URL = 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing/'
+const CACHE_PATH = path.join(os.tmpdir(), 'dsh-billing-pricing.html')
+
+async function loadOfficialHtml() {
+  try {
+    const res = await fetch(PRICING_URL, { headers: { 'user-agent': 'Mozilla/5.0' } })
+    if (res.ok) {
+      const html = await res.text()
+      if (/<table/i.test(html)) {
+        fs.writeFileSync(CACHE_PATH, html)
+        console.log(`（官方页在线抓取成功，已缓存到 ${CACHE_PATH}）`)
+        return html
+      }
+    }
+    console.log(`（官方页返回 HTTP ${res.status} 或结构异常，改用缓存）`)
+  } catch (error) {
+    console.log(`（在线抓取失败：${error instanceof Error ? error.message : String(error)}，改用缓存）`)
+  }
+  if (fs.existsSync(CACHE_PATH)) {
+    console.log(`（使用缓存 ${CACHE_PATH}）`)
+    return fs.readFileSync(CACHE_PATH, 'utf8')
+  }
+  return null
+}
+
+const cfg = M.mergeConfig({})
+const fail = []
+const ok = (label, cond, extra = '') => { console.log(`  ${cond ? '✅' : '❌'} ${label}${extra ? ' — ' + extra : ''}`); if (!cond) fail.push(label) }
+
+const html = await loadOfficialHtml()
+let parsed = null
+
+console.log('=== A. 解析器（M1）===')
+if (html === null) {
+  console.log('  ⚠️ 跳过：既无在线页也无缓存')
+} else {
+parsed = M.parsePricingHtml(html)
+ok('官方现行页可解析', parsed !== null)
+ok('识别 deepseek-flash 空闲 0.02/1/4', JSON.stringify(parsed?.models?.['deepseek-flash']?.offPeak) === JSON.stringify({cacheHit:0.02,cacheMiss:1,output:4}))
+ok('识别 deepseek-flash 高峰 0.04/2/8', JSON.stringify(parsed?.models?.['deepseek-flash']?.peak) === JSON.stringify({cacheHit:0.04,cacheMiss:2,output:8}))
+ok('识别 deepseek-v4-pro 空闲 0.15/4.5/13.5', JSON.stringify(parsed?.models?.['deepseek-v4-pro']?.offPeak) === JSON.stringify({cacheHit:0.15,cacheMiss:4.5,output:13.5}))
+ok('带脚注角标的表头归一化', M.modelIdFromHeaderCell('deepseek-flash<sup>(1)</sup>') === 'deepseek-flash')
+ok('非模型表头返回 null', M.modelIdFromHeaderCell('模型') === null)
+ok('<br> 折行指标标签仍可匹配（指标列归一化）', (() => {
+  const h = '<table><tr><td>模型</td><td>deepseek-flash(1)</td></tr><tr><td rowspan=2>百万tokens输入<br>（缓存命中）</td><td>空闲时段</td><td>0.02元</td></tr><tr><td>高峰时段</td><td>0.04元</td></tr><tr><td rowspan=2>百万tokens输入<br>（缓存未命中）</td><td>空闲时段</td><td>1元</td></tr><tr><td>高峰时段</td><td>2元</td></tr><tr><td rowspan=2>百万tokens输出</td><td>空闲时段</td><td>4元</td></tr><tr><td>高峰时段</td><td>8元</td></tr></table>'
+  const p = M.parsePricingHtml(h)
+  const e = p?.models?.['deepseek-flash']
+  return e?.offPeak?.output === 4 && e?.offPeak?.cacheMiss === 1 && e?.peak?.output === 8 && e?.peak?.cacheMiss === 2
+})())
+
+}
+
+console.log('\n=== B. 内置价表（M2/M3）===')
+const fl = M.resolvePricing('deepseek-flash', cfg.pricing), pro = M.resolvePricing('deepseek-v4-pro', cfg.pricing)
+ok('deepseek-flash 精确命中', fl?.matched === 'exact')
+ok('deepseek-v4-pro 精确命中', pro?.matched === 'exact')
+ok('deepseek-v4-flash 精确命中', M.resolvePricing('deepseek-v4-flash', cfg.pricing)?.matched === 'exact')
+ok('deepseek-v4-flash-vision-exp 精确命中', M.resolvePricing('deepseek-v4-flash-vision-exp', cfg.pricing)?.matched === 'exact')
+ok('未知模型落兜底价', M.resolvePricing('deepseek-unknown-x', cfg.pricing) === null)
+const R = (e, iso) => { const {rate,mode} = M.rateAt(e, new Date(iso).getTime()); return `${mode}|${rate.cacheHit}/${rate.cacheMiss}/${rate.output}` }
+ok('v4-pro 09-14 11:59 仍 pro 高峰价', R(pro.entry,'2026-09-14T11:59:00+08:00') === 'peak|0.3/9/27', R(pro.entry,'2026-09-14T11:59:00+08:00'))
+ok('v4-pro 09-14 12:00 切 flash 空闲价', R(pro.entry,'2026-09-14T12:00:00+08:00') === 'off-peak|0.02/1/4', R(pro.entry,'2026-09-14T12:00:00+08:00'))
+ok('v4-pro 09-14 15:00 切 flash 高峰价', R(pro.entry,'2026-09-14T15:00:00+08:00') === 'peak|0.04/2/8', R(pro.entry,'2026-09-14T15:00:00+08:00'))
+ok('v4-pro 09-15 10:00 flash 高峰价', R(pro.entry,'2026-09-15T10:00:00+08:00') === 'peak|0.04/2/8', R(pro.entry,'2026-09-15T10:00:00+08:00'))
+ok('flash 09-10 11:59 旧价高峰', R(fl.entry,'2026-09-10T11:59:00+08:00') === 'peak|0.1/3/9', R(fl.entry,'2026-09-10T11:59:00+08:00'))
+ok('flash 09-10 12:00 新价空闲(12点非高峰)', R(fl.entry,'2026-09-10T12:00:00+08:00') === 'off-peak|0.02/1/4', R(fl.entry,'2026-09-10T12:00:00+08:00'))
+ok('兜底价不随 09-14 下调（09-21 周一高峰仍 pro 高峰价）', R(cfg.fallbackPrice,'2026-09-21T10:00:00+08:00') === 'peak|0.3/9/27', R(cfg.fallbackPrice,'2026-09-21T10:00:00+08:00'))
+ok('兜底价 10-15 周一高峰仍 pro 高峰价', R(cfg.fallbackPrice,'2026-10-15T10:00:00+08:00') === 'peak|0.3/9/27', R(cfg.fallbackPrice,'2026-10-15T10:00:00+08:00'))
+ok('客户兜底窗口归一化与 host 一致', JSON.stringify(M.htmlTables('<table><tr><td>x</td></tr></table>')[0]) === JSON.stringify([['x']]))
+
+console.log('\n=== C. 峰谷边界（分钟粒度）===')
+const want = [['2026-09-11T08:59:00+08:00','off-peak'],['2026-09-11T09:00:00+08:00','peak'],['2026-09-11T11:59:00+08:00','peak'],['2026-09-11T12:00:00+08:00','off-peak'],['2026-09-11T12:30:00+08:00','off-peak'],['2026-09-11T14:00:00+08:00','peak'],['2026-09-11T17:59:00+08:00','peak'],['2026-09-11T18:00:00+08:00','off-peak'],['2026-09-12T10:00:00+08:00','off-peak'],['2026-09-13T10:00:00+08:00','off-peak'],['2026-09-14T10:00:00+08:00','peak']]
+for (const [iso, exp] of want) ok(`${iso.slice(5,16)} → ${exp}`, M.rateAt(fl.entry, new Date(iso).getTime()).mode === exp, M.rateAt(fl.entry, new Date(iso).getTime()).mode)
+
+console.log('\n=== D. 同步幂等 + 不回溯（M1 配套）===')
+const layered = M.layerPricing(parsed ?? null, undefined, Date.now())
+ok('flash 档数不变(2)', layered['deepseek-flash'].schedules.length === 2, String(layered['deepseek-flash'].schedules.length))
+ok('pro 档数不变(2)', layered['deepseek-v4-pro'].schedules.length === 2, String(layered['deepseek-v4-pro'].schedules.length))
+const old = layered['deepseek-v4-pro'].schedules.map(s => s.effectiveAt)
+ok('pro 历史档未被改写', JSON.stringify(old) === JSON.stringify(['2026-08-17T00:00:00+08:00','2026-09-14T12:00:00+08:00']), JSON.stringify(old))
+// 官方降价场景：模拟页面报出更低价，应追加新档且不动历史
+const cheap = { models: { 'deepseek-flash': { offPeak: {cacheHit:0.01,cacheMiss:0.5,output:2}, peak: {cacheHit:0.02,cacheMiss:1,output:4} } } }
+const l2 = M.layerPricing(cheap, undefined, Date.now())
+ok('官方改价 → 追加新档接管', l2['deepseek-flash'].schedules.length === 3, String(l2['deepseek-flash'].schedules.length))
+ok('追加档从观察时刻生效', new Date(l2['deepseek-flash'].schedules.at(-1).effectiveAt).getTime() <= Date.now() + 1000)
+
+console.log('\n=== E. tide RPC 载荷（M4）===')
+const t = M.resolveTide(cfg, new Date('2026-09-11T10:00:00+08:00').getTime())
+ok('周五 10:00 isPeak=true', t.isPeak === true, JSON.stringify(t))
+ok('工作日 10:00 → peak', t.mode === 'peak')
+ok('下发 windowsHours=[[9,12],[14,18]]', JSON.stringify(t.windowsHours) === '[[9,12],[14,18]]', JSON.stringify(t.windowsHours))
+ok('下发 weekendOffPeak=true', t.weekendOffPeak === true)
+ok('下发 timezoneOffsetMinutes=480', t.timezoneOffsetMinutes === 480)
+const t2 = M.resolveTide(cfg, new Date('2026-09-12T10:00:00+08:00').getTime())
+ok('周六 10:00 isPeak=false', t2.isPeak === false, JSON.stringify(t2.mode))
+
+console.log('\n=== F. 真实会话回归 ===')
+const files = execSync(`find /Users/van/.dsh/sessions -name "session.jsonl.zstd" | head -40`).toString().trim().split('\n').filter(Boolean)
+const seen = new Map()
+for (const f of files) {
+  let raw; try { raw = execSync(`zstd -dc "${f}" 2>/dev/null`).toString() } catch { continue }
+  const events = []
+  for (const line of raw.split('\n')) { if (line.trim()) { try { events.push(JSON.parse(line)) } catch {} } }
+  const steps = M.collectUsage(events); if (!steps.size) continue
+  for (const row of M.summarize(steps, cfg, Date.now())) {
+    const p = seen.get(row.model) ?? {steps:0,cost:0,priced:row.priced}
+    p.steps+=row.steps; p.cost+=row.cost; seen.set(row.model,p)
+  }
+}
+let tot = 0
+for (const [m,s] of [...seen.entries()].sort()) { tot += s.cost; console.log(`  ${m.padEnd(46)} steps=${String(s.steps).padEnd(4)} ¥${s.cost.toFixed(4)} priced=${s.priced}`) }
+console.log(`  合计 ¥${tot.toFixed(4)}`)
+ok('全部会话均命中实价', [...seen.values()].every(s => s.priced))
+
+console.log(`\n${fail.length === 0 ? '🎉 全部断言通过' : `❌ ${fail.length} 项失败：` + fail.join(' / ')}`)
+process.exit(fail.length ? 1 : 0)

@@ -1,0 +1,24 @@
+.billing-pills { display: inline-flex; align-items: center; gap: 2px; }
+.billing-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--dsw-alias-label-secondary);
+  font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.billing-pill:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.billing-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.billing-ok { color: #43b97f; }
+.billing-warn { color: #e08a3e; }
+
+/* NumberFlow 渲染为 <number-flow-react> 自定义元素，内部是 open shadow DOM：
+   CSS 自定义属性与可继承属性（color / font-*）都能穿透，但 shadow 内 :host 设了
+   line-height:1 —— light DOM 规则优先级更高，这里把行高拉回胶囊的 18px。 */
+.billing-num number-flow-react { line-height: inherit; }
+
+/* 金额槽：固定最小宽度 + 右对齐。位数切换（¥0.0234 ↔ ¥0.023）时只在槽内收缩，
+   不推动右侧 tokens。7.2ch 覆盖 ¥0.0000 与 ¥123.45 两种最长形态。 */
+.billing-money-slot { display: inline-flex; justify-content: flex-end; min-width: 7.2ch; }
+/* tokens 槽：右对齐；tokens 单调增长，无需兜底宽度。 */
+.billing-tokens-slot { display: inline-flex; justify-content: flex-end; }
+.billing-amount { display: inline-flex; align-items: baseline; }
