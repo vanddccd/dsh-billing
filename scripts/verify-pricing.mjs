@@ -121,5 +121,23 @@ for (const [m,s] of [...seen.entries()].sort()) { tot += s.cost; console.log(`  
 console.log(`  合计 ¥${tot.toFixed(4)}`)
 ok('全部会话均命中实价', [...seen.values()].every(s => s.priced))
 
+console.log('\n=== G. 跨会话聚合（lineage 去重 + 防撞车）===')
+const mkUsage = (turn, step, input, output) => ({
+  type: 'assistant/chunk',
+  time: 1789000000000,
+  data: { turn, step, chunk: { type: 'usage', usage: { inputTokens: input, outputTokens: output } } },
+})
+// 父会话 t1s1 = 100 输入；子会话日志 = 物理复制的父事件（继承）+ 自己的 t1s1 = 10 输入
+const merged = M.mergeLineageUsage([
+  { sessionId: 's-parent', events: [mkUsage(1, 1, 100, 1)], inheritedEventCount: 0 },
+  { sessionId: 's-child', events: [mkUsage(1, 1, 100, 1), mkUsage(1, 1, 10, 1)], inheritedEventCount: 1 },
+])
+ok('跨会话合并后父子各 1 条', merged.size === 2, String(merged.size))
+let sumIn = 0
+for (const b of merged.values()) sumIn += b.usage.inputTokens
+ok('继承事件被切片去重（100+10=110，不重复计）', sumIn === 110, String(sumIn))
+ok('跨会话同名 turn:step 不撞车', merged.has('s-parent:1:1') && merged.has('s-child:1:1'), [...merged.keys()].join(','))
+ok('无前缀调用向后兼容（key 为 turn:step）', M.collectUsage([mkUsage(2, 3, 5, 0)]).has('2:3'))
+
 console.log(`\n${fail.length === 0 ? '🎉 全部断言通过' : `❌ ${fail.length} 项失败：` + fail.join(' / ')}`)
 process.exit(fail.length ? 1 : 0)

@@ -450,16 +450,19 @@ function stepKey(turn, step) {
  * 失败的请求没有 assistant 消息，但其 usage 分片已持久化，会被计入。
  *
  * @param {any[]} events 会话事件日志数组（session-query 读取的完整日志）
+ * @param {string} [keyPrefix] 聚合多个会话时给 stepKey 加前缀（如 `${sessionId}:`），
+ *   防止跨会话 turn:step 撞车互相覆盖。
  * @returns {Map<string, {turn:number, step:number, time:number, usage:any, model:string|null}>}
  */
-export function collectUsage(events) {
+export function collectUsage(events, keyPrefix) {
+  const prefix = typeof keyPrefix === 'string' ? keyPrefix : ''
   const steps = new Map()
   if (!Array.isArray(events)) return steps
   for (const event of events) {
     if (event.type === 'assistant/chunk') {
       const chunk = event.data?.chunk
       if (chunk?.type !== 'usage') continue
-      const key = stepKey(event.data.turn, event.data.step)
+      const key = `${prefix}${stepKey(event.data.turn, event.data.step)}`
       let bucket = steps.get(key)
       if (!bucket) {
         bucket = { turn: event.data.turn, step: event.data.step, time: event.time, usage: null, model: null }
@@ -472,7 +475,7 @@ export function collectUsage(events) {
       acc.cacheReadTokens += u.cacheReadTokens ?? 0
       bucket.usage = acc
     } else if (event.type === 'assistant/message') {
-      const key = stepKey(event.data.turn, event.data.step)
+      const key = `${prefix}${stepKey(event.data.turn, event.data.step)}`
       let bucket = steps.get(key)
       if (!bucket) {
         bucket = { turn: event.data.turn, step: event.data.step, time: event.time, usage: null, model: null }
@@ -481,6 +484,33 @@ export function collectUsage(events) {
       const source = event.data.message?.source
       if (source?.model) bucket.model = `${source.provider ?? ''}:${source.model}`
       if (!bucket.usage && event.data.usage) bucket.usage = { ...event.data.usage }
+    }
+  }
+  return steps
+}
+
+/**
+ * 合并多个会话的 token 用量（跨会话聚合用）。
+ *
+ * 子代理会话是 fork 出来的，日志开头**物理复制**了继承的父会话事件
+ * （对应 inheritedEventCount），直接相加会重复计费——每个会话只取
+ * [inheritedEventCount:] 之后自己产生的事件。
+ * stepKey 加会话 id 前缀，防止跨会话 turn:step 撞车互相覆盖。
+ *
+ * @param {Array<{sessionId: string, events: any[], inheritedEventCount?: number}>} entries
+ * @returns {Map<string, object>} 前缀化 stepKey → 用量桶
+ */
+export function mergeLineageUsage(entries) {
+  const steps = new Map()
+  for (const entry of entries ?? []) {
+    if (!entry?.sessionId) continue
+    const events = Array.isArray(entry.events) ? entry.events : []
+    const cut = Number.isFinite(entry.inheritedEventCount) && entry.inheritedEventCount > 0
+      ? entry.inheritedEventCount
+      : 0
+    const own = cut > 0 ? events.slice(cut) : events
+    for (const [key, bucket] of collectUsage(own, `${entry.sessionId}:`)) {
+      steps.set(key, bucket)
     }
   }
   return steps
@@ -548,15 +578,19 @@ function fmtMoney(cny) {
   return cny < 0.01 && cny > 0 ? cny.toFixed(4) : cny.toFixed(2)
 }
 
-/** 会话费用文本（人民币）。pricingCtx = { pricing, fallbackPrice, source, syncedAt }。 */
-export function formatCostText(events, pricingCtx) {
-  const steps = collectUsage(events)
+/** 会话费用文本（人民币）。usage = lineageUsage 聚合结果；pricingCtx = { pricing, fallbackPrice, source, syncedAt }。 */
+export function formatCostText(usage, pricingCtx) {
+  const steps = usage?.steps ?? new Map()
   const nowMs = Date.now()
   const rows = summarize(steps, pricingCtx, nowMs)
   if (rows.length === 0) {
-    return '本会话目前没有已记账的模型用量（assistant/usage 记录）。'
+    return '本会话（含子代理）目前没有已记账的模型用量（assistant/usage 记录）。'
   }
-  const lines = ['📊 本会话 API 费用估算（按官方单价，人民币）', '']
+  const sub = Math.max(0, (usage?.sessions ?? 1) - 1)
+  const lines = [
+    sub > 0 ? '📊 本会话 API 费用估算（含子代理，按官方单价，人民币）' : '📊 本会话 API 费用估算（按官方单价，人民币）',
+    '',
+  ]
   let total = 0
   for (const row of rows) {
     const tokens = row.inputTokens + row.cacheReadTokens + row.outputTokens
@@ -568,7 +602,13 @@ export function formatCostText(events, pricingCtx) {
     )
   }
   lines.push('', `合计：¥${fmtMoney(total)}`)
-  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价、周末全天空闲价；2026-09-10 12:00 起 flash 系列降价）；子代理是独立会话，各自单独统计。')
+  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价、周末全天空闲价；2026-09-10 12:00 起 flash 系列降价）。')
+  if (sub > 0) {
+    lines.push(`口径：本会话 + ${sub} 个子代理会话；子代理日志中 fork 继承的父会话事件已剔除，不重复计费。`)
+  }
+  if (usage?.failed > 0) {
+    lines.push(`⚠️ 另有 ${usage.failed} 个会话日志读取失败，未计入。`)
+  }
   const src = pricingCtx?.source === 'online'
     ? `单价来源：官方在线同步${pricingCtx.syncedAt ? `（${new Date(pricingCtx.syncedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}）` : ''}`
     : '单价来源：内置默认（官方在线同步不可用，若官方改价请手动更新配置）'
@@ -720,9 +760,9 @@ export function apply(ctx, config) {
     }
   }
 
-  /** 结构化会话费用数据（供 Web UI 会话头部渲染）。 */
-  function costPayload(events) {
-    const rows = summarize(collectUsage(events), current, Date.now())
+  /** 结构化会话费用数据（供 Web UI 会话头部渲染）。usage = lineageUsage 聚合结果。 */
+  function costPayload(usage) {
+    const rows = summarize(usage?.steps ?? new Map(), current, Date.now())
     return {
       cost: rows.reduce((sum, row) => sum + row.cost, 0),
       totalTokens: rows.reduce((sum, row) => sum + row.inputTokens + row.cacheReadTokens + row.outputTokens, 0),
@@ -735,19 +775,68 @@ export function apply(ctx, config) {
         steps: row.steps,
         priced: row.priced,
       })),
+      subagentSessions: Math.max(0, (usage?.sessions ?? 0) - 1),
+      failedSessions: usage?.failed ?? 0,
       pricingSource: current.source,
       pricingSyncedAt: current.syncedAt,
       updatedAt: Date.now(),
     }
   }
 
-  /** 从 sessionId 读完整事件日志（新版 session 的事件不再挂在 session.events 上）。 */
-  async function sessionEvents(sessionId) {
-    if (typeof sessionId !== 'string' || sessionId === '') return undefined
+  /** 递归展平后代树为会话 id 列表（防环、防重复）。 */
+  function flattenDescendants(node, acc, seen) {
+    const id = String(node?.session?.header?.id ?? '')
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    acc.push(id)
+    for (const child of node?.descendants ?? []) flattenDescendants(child, acc, seen)
+  }
+
+  /**
+   * 聚合「本会话 + 全部子代理后代会话」的 token 用量。
+   *
+   * 通过 sessionQuery.traceSession 拿完整后代树（含孙代理）；每个会话读日志后按
+   * inheritedEventCount 切片去重（子代理日志物理复制了 fork 继承的父会话事件）。
+   * traceSession 不可用或失败时降级为只统计本会话；单个子会话读取失败跳过并计数，
+   * 绝不因个别损坏会话拖垮整体。
+   *
+   * @returns {Promise<{steps: Map<string, object>, sessions: number, failed: number, ownReadable: boolean}>}
+   */
+  async function lineageUsage(sessionId) {
+    const empty = { steps: new Map(), sessions: 0, failed: 0, ownReadable: false }
+    if (typeof sessionId !== 'string' || sessionId === '') return empty
     const sessionQuery = ctx.get('sessionQuery')
-    if (!sessionQuery || typeof sessionQuery.readSession !== 'function') return undefined
-    const snapshot = await sessionQuery.readSession(sessionId)
-    return Array.isArray(snapshot?.events) ? snapshot.events : undefined
+    if (!sessionQuery || typeof sessionQuery.readSession !== 'function') return empty
+
+    const ids = [sessionId]
+    const seen = new Set([sessionId])
+    if (typeof sessionQuery.traceSession === 'function') {
+      try {
+        const trace = await sessionQuery.traceSession(sessionId)
+        for (const child of trace?.descendants ?? []) flattenDescendants(child, ids, seen)
+      } catch (error) {
+        ctx.logger?.warn?.('deepseek-billing: 会话谱系查询失败，降级只统计本会话：%s', error instanceof Error ? error.message : String(error))
+      }
+    }
+
+    const entries = []
+    let sessions = 0
+    let failed = 0
+    let ownReadable = false
+    for (const id of ids) {
+      let snapshot
+      try {
+        snapshot = await sessionQuery.readSession(id)
+      } catch (error) {
+        failed += 1
+        ctx.logger?.warn?.('deepseek-billing: 会话 %s 日志读取失败，跳过：%s', id, error instanceof Error ? error.message : String(error))
+        continue
+      }
+      entries.push({ sessionId: id, events: snapshot?.events, inheritedEventCount: snapshot?.inheritedEventCount })
+      sessions += 1
+      if (id === sessionId) ownReadable = true
+    }
+    return { steps: mergeLineageUsage(entries), sessions, failed, ownReadable }
   }
 
   // ---- 命令：/balance ----
@@ -767,11 +856,14 @@ export function apply(ctx, config) {
   // ---- 命令：/cost ----
   ctx.commands.register({
     name: 'cost',
-    description: '查看当前会话的 DeepSeek API 费用估算（人民币）',
+    description: '查看当前会话的 DeepSeek API 费用估算（人民币，含子代理）',
     handler: async ({ agent }) => {
       try {
-        const events = await sessionEvents(agent?.session?.id)
-        return { kind: 'success', text: formatCostText(events, current) }
+        const usage = await lineageUsage(agent?.session?.id)
+        if (!usage.ownReadable) {
+          return { kind: 'error', text: '当前会话不存在或无法读取事件日志。' }
+        }
+        return { kind: 'success', text: formatCostText(usage, current) }
       } catch (error) {
         return { kind: 'error', text: `统计费用失败：${error instanceof Error ? error.message : String(error)}` }
       }
@@ -811,8 +903,10 @@ export function apply(ctx, config) {
       if (query === 'cost' || query === 'both') {
         if (exec.agent?.session) {
           try {
-            const events = await sessionEvents(exec.agent.session.id)
-            parts.push(formatCostText(events, current))
+            const usage = await lineageUsage(exec.agent.session.id)
+            parts.push(usage.ownReadable
+              ? formatCostText(usage, current)
+              : '当前会话的事件日志无法读取，无法统计费用。')
           } catch (error) {
             parts.push(`统计费用失败：${error instanceof Error ? error.message : String(error)}`)
           }
@@ -836,11 +930,11 @@ export function apply(ctx, config) {
         }
         if (endpoint === 'cost') {
           const sessionId = payload?.args?.sessionId
-          const events = await sessionEvents(sessionId)
-          if (!events) {
+          const usage = await lineageUsage(sessionId)
+          if (!usage.ownReadable) {
             return { ok: false, error: { code: 'NO_SESSION', message: `会话不存在或无法读取事件日志：${String(sessionId)}`, details: {} } }
           }
-          return { ok: true, value: costPayload(events) }
+          return { ok: true, value: costPayload(usage) }
         }
         if (endpoint === 'tide') {
           return { ok: true, value: resolveTide(current, Date.now()) }
