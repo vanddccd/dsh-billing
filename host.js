@@ -33,8 +33,8 @@ const DEFAULT_PEAK_WINDOWS = [[9, 12], [14, 18]]
  *   2026-08-23 起：周末（周六/周日）全天执行空闲价。
  *   2026-09-10 12:00 起：flash 系列降价（空闲 0.02/1/4，高峰翻倍 0.04/2/8，
  *     缓存命中降幅 60%）；pro 系列价格不变。
- *   2026-09-14 12:00 起：V4 Pro 有序下线，deepseek-v4-pro 的请求全部路由到 V4.1 Flash，
- *     **并按 Flash 价计费**（官方脚注 2）——计费口径随之切到 flash 系列。
+ *   2026-09-13 官方公告（价格页脚注 2）：原定 2026-09-14 的 V4 Pro 下线计划取消，
+ *     **9 月 14 日之后继续提供 V4 Pro 服务、计费方式保持不变**（pro 价不动）。
  *
  * 官方按「系列」定价，故新模型（含改名后的 deepseek-flash、限时内测名）按系列匹配，
  * 不必等官方价格页收录——价格页只列在售模型。
@@ -59,17 +59,12 @@ const PRO_SERIES_RATES = [
     offPeak: { cacheHit: 0.15, cacheMiss: 4.5, output: 13.5 },
     peak: { cacheHit: 0.30, cacheMiss: 9.0, output: 27.0 },
   },
-  {
-    // 路由变化（非降价）：V4 Pro 下线后 deepseek-v4-pro 按 V4.1 Flash 计费。
-    effectiveAt: '2026-09-14T12:00:00+08:00',
-    offPeak: { cacheHit: 0.02, cacheMiss: 1.0, output: 4.0 },
-    peak: { cacheHit: 0.04, cacheMiss: 2.0, output: 8.0 },
-  },
+  // 2026-09-13 官方公告撤销下线：V4 Pro 9-14 之后继续服务、计费不变，故不再有切 flash 价的档。
 ]
 
 /**
  * 定价系列锚点：系列匹配时取该模型条目的单价。
- * pro 锚点挂 PRO_SERIES_RATES（含 09-14 切 flash 价的档），故 pro 系模型自动跟随；
+ * pro 锚点挂 PRO_SERIES_RATES（2026-09-13 官方公告撤销 V4 Pro 下线后即只有 pro 价一档）；
  * 用户若显式配置了 deepseek-v4-pro 的 pricing，则按字段级覆盖优先生效。
  */
 const SERIES_ANCHOR = { flash: 'deepseek-flash', pro: 'deepseek-v4-pro' }
@@ -121,8 +116,8 @@ DEFAULT_PRICING['deepseek-reasoner'] = { cacheHit: 1, cacheMiss: 4, output: 16 }
 
 /**
  * 未识别模型的兜底单价：钉死在 pro 系列的最高价（宁可略高估，不可低估）。
- * 刻意**不**复用 PRO_SERIES_RATES——那份价目在 2026-09-14 12:00 会因 V4 Pro 下线
- * 而切到 flash 价位；兜底价若跟着降，等于把「未知模型」往低估方向带。
+ * 刻意**不**复用 PRO_SERIES_RATES——兜底价须独立于任何系列调价，
+ * 将来 pro 系列若再降价，兜底价不跟随下调，避免把「未知模型」往低估方向带。
  * deepseek-* 的 flash/pro 系列模型走系列匹配，不会落到这里。
  */
 const DEFAULT_FALLBACK_PRICE = buildSeriesEntry([

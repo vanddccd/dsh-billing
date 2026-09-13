@@ -68,9 +68,9 @@ ok('deepseek-v4-flash-vision-exp 精确命中', M.resolvePricing('deepseek-v4-fl
 ok('未知模型落兜底价', M.resolvePricing('deepseek-unknown-x', cfg.pricing) === null)
 const R = (e, iso) => { const {rate,mode} = M.rateAt(e, new Date(iso).getTime()); return `${mode}|${rate.cacheHit}/${rate.cacheMiss}/${rate.output}` }
 ok('v4-pro 09-14 11:59 仍 pro 高峰价', R(pro.entry,'2026-09-14T11:59:00+08:00') === 'peak|0.3/9/27', R(pro.entry,'2026-09-14T11:59:00+08:00'))
-ok('v4-pro 09-14 12:00 切 flash 空闲价', R(pro.entry,'2026-09-14T12:00:00+08:00') === 'off-peak|0.02/1/4', R(pro.entry,'2026-09-14T12:00:00+08:00'))
-ok('v4-pro 09-14 15:00 切 flash 高峰价', R(pro.entry,'2026-09-14T15:00:00+08:00') === 'peak|0.04/2/8', R(pro.entry,'2026-09-14T15:00:00+08:00'))
-ok('v4-pro 09-15 10:00 flash 高峰价', R(pro.entry,'2026-09-15T10:00:00+08:00') === 'peak|0.04/2/8', R(pro.entry,'2026-09-15T10:00:00+08:00'))
+ok('v4-pro 09-14 12:00 仍 pro 空闲价（下线已撤销）', R(pro.entry,'2026-09-14T12:00:00+08:00') === 'off-peak|0.15/4.5/13.5', R(pro.entry,'2026-09-14T12:00:00+08:00'))
+ok('v4-pro 09-14 15:00 仍 pro 高峰价', R(pro.entry,'2026-09-14T15:00:00+08:00') === 'peak|0.3/9/27', R(pro.entry,'2026-09-14T15:00:00+08:00'))
+ok('v4-pro 09-15 10:00 仍 pro 高峰价', R(pro.entry,'2026-09-15T10:00:00+08:00') === 'peak|0.3/9/27', R(pro.entry,'2026-09-15T10:00:00+08:00'))
 ok('flash 09-10 11:59 旧价高峰', R(fl.entry,'2026-09-10T11:59:00+08:00') === 'peak|0.1/3/9', R(fl.entry,'2026-09-10T11:59:00+08:00'))
 ok('flash 09-10 12:00 新价空闲(12点非高峰)', R(fl.entry,'2026-09-10T12:00:00+08:00') === 'off-peak|0.02/1/4', R(fl.entry,'2026-09-10T12:00:00+08:00'))
 ok('兜底价不随 09-14 下调（09-21 周一高峰仍 pro 高峰价）', R(cfg.fallbackPrice,'2026-09-21T10:00:00+08:00') === 'peak|0.3/9/27', R(cfg.fallbackPrice,'2026-09-21T10:00:00+08:00'))
@@ -84,9 +84,9 @@ for (const [iso, exp] of want) ok(`${iso.slice(5,16)} → ${exp}`, M.rateAt(fl.e
 console.log('\n=== D. 同步幂等 + 不回溯（M1 配套）===')
 const layered = M.layerPricing(parsed ?? null, undefined, Date.now())
 ok('flash 档数不变(2)', layered['deepseek-flash'].schedules.length === 2, String(layered['deepseek-flash'].schedules.length))
-ok('pro 档数不变(2)', layered['deepseek-v4-pro'].schedules.length === 2, String(layered['deepseek-v4-pro'].schedules.length))
+ok('pro 档数不变(1)', layered['deepseek-v4-pro'].schedules.length === 1, String(layered['deepseek-v4-pro'].schedules.length))
 const old = layered['deepseek-v4-pro'].schedules.map(s => s.effectiveAt)
-ok('pro 历史档未被改写', JSON.stringify(old) === JSON.stringify(['2026-08-17T00:00:00+08:00','2026-09-14T12:00:00+08:00']), JSON.stringify(old))
+ok('pro 历史档未被改写', JSON.stringify(old) === JSON.stringify(['2026-08-17T00:00:00+08:00']), JSON.stringify(old))
 // 官方降价场景：模拟页面报出更低价，应追加新档且不动历史
 const cheap = { models: { 'deepseek-flash': { offPeak: {cacheHit:0.01,cacheMiss:0.5,output:2}, peak: {cacheHit:0.02,cacheMiss:1,output:4} } } }
 const l2 = M.layerPricing(cheap, undefined, Date.now())
