@@ -621,7 +621,7 @@ export function formatCostText(usage, pricingCtx) {
     lines.push(`⚠️ 另有 ${usage.failed} 个会话的事件日志读取失败（非「未落盘」类），未计入。`)
   }
   if (usage?.missing > 0) {
-    lines.push(`另有 ${usage.missing} 个已结束的会话无法计入：dsh 现在只写投影缓存，事件日志不再落盘。`)
+    lines.push(`另有 ${usage.missing} 个会话未能计入（已结束未落盘，或为 fork 子代理会话在 dsh 侧无法重建）。`)
   }
   const src = pricingCtx?.source === 'online'
     ? `单价来源：官方在线同步${pricingCtx.syncedAt ? `（${new Date(pricingCtx.syncedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}）` : ''}`
@@ -806,14 +806,18 @@ export function apply(ctx, config) {
   const reportedReadFailures = new Set()
 
   /**
-   * 「事件日志不存在」与「日志真的读坏」必须分开。
+   * 哪些读取失败只需跳过、不必报警。
    *
-   * dsh 现在只写投影缓存（`~/.dsh/storages/session_projcache/`），事件日志不再落盘，
-   * 所以**已结束的会话回读必然失败** —— 这是正常现象，不该报警；
-   * 只有文件损坏 / 权限 / 解析失败才是真问题。
+   * 实测两类，都是 dsh 侧的机制约束，插件无法修复：
+   *   1. 事件日志不存在 —— 会话已结束且未落盘；
+   *   2. fork 出来的子代理会话（isSeeded: true）重建时 seed 断言失败：
+   *      "seeded session constructor seed must equal its inherited prefix"
+   *      （抛自 packages/core/session/src/index.ts）。这类会话的日志文件其实
+   *      **存在**（session.v3.jsonl.zstd），是 dsh 拒绝重建，不是文件缺失。
+   * 其余（文件损坏 / 权限 / 解析）才算真失败，才报警。
    */
-  function isMissingLogError(detail) {
-    return /ENOENT|no such file|not found|不存在|未找到|missing/i.test(String(detail))
+  function isSkippableReadError(detail) {
+    return /ENOENT|no such file|not found|不存在|未找到|missing|seeded session|inherited prefix/i.test(String(detail))
   }
 
   /** 失败去重上报。ctx.logger 在本插件上下文里实测不落盘，故一律同时写 stderr 兜底。 */
@@ -872,8 +876,8 @@ export function apply(ctx, config) {
         snapshot = await sessionQuery.readSession(id)
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error)
-        if (isMissingLogError(detail)) {
-          // 已结束的会话、事件日志未落盘 —— 正常现象，只计数不报警
+        if (isSkippableReadError(detail)) {
+          // 机制约束（未落盘 / fork 会话无法重建）—— 只计数不报警
           missing += 1
         } else {
           failed += 1

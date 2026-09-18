@@ -42,6 +42,23 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 > 三张图摄于本机实机环境。会话费用那张拍在宿主侧 `cacheSaved` 字段生效**之前**，所以里面**没有「缓存节省」行**（该行要重启 `dsh web` 让 `host.js` 重新加载后才会出现）；除此之外即为当前样式。设计稿的四个方向见 [`docs/mockup/`](./docs/mockup/)。
 
+## 0.6.10：修正 0.6.9 的错误判断 —— 那不是「未落盘」，是 dsh 拒绝重建 fork 会话
+
+0.6.9 我把「读取失败」归因为「事件日志未落盘」，**这个判断是错的**。加了 stderr 上报后拿到了确切错误：
+
+```
+[dsh-billing] 会话 session-dcc1284f-… 的事件日志不可读：
+seeded session constructor seed must equal its inherited prefix
+```
+
+对照该会话的 identity：`isSeeded: true`、`inheritedEventCount: 414` —— 它是 **fork 出来的子代理会话**；而它的日志文件**好好地存在着**（`session.v3.jsonl.zstd`）。断言抛自 `packages/core/session/src/index.ts:600`：dsh 从存储重建 seeded 会话时要求「构造函数 seed == 继承前缀长度」，这个校验没过，于是**拒绝重建**。
+
+- `isMissingLogError()` → 更名 **`isSkippableReadError()`**（原名在语义上就是错的），正则补上 `seeded session` / `inherited prefix`
+- 措辞改准：不再说「事件日志未落盘」，改为「fork 子代理会话无法回读」
+- 回归新增：**正则 6 个用例**（真实 seeded 错误 / ENOENT / not found → 跳过；JSON 解析失败 / EACCES / EBUSY → 报警）
+
+这类失败**插件无法修复**（属 dsh 的重建约束）。若要让这笔费用也不再漏，可行方向是改用投影缓存里的 `tokenUsage` 总量（该会话的投影可读：`uncachedInput 87719 / output 82718 / cacheRead 4709760`），但需要读 `~/.dsh/storages/session_projcache/` 的内部路径，且投影没有模型维度、只能按该会话最后使用的模型估算 —— **暂不做**。
+
 ## 0.6.9：区分「已结束会话未落盘」与「真的读取失败」
 
 0.6.4 起浮层脚注会显示 `⚠️ N 个日志读取失败`。实测这行字有两个毛病：**说不清后果**，而且**把正常现象当成了错误**。

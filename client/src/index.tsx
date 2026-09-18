@@ -336,7 +336,7 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
       </span>
       <span className="billing-pop-source">
         {source}
-        {missing > 0 ? `　·　另有 ${missing} 个已结束会话未计入（事件日志未落盘）` : ''}
+        {missing > 0 ? `　·　另有 ${missing} 个会话未能计入（fork 子代理会话无法回读）` : ''}
       </span>
     </>
   )
