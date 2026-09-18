@@ -6,7 +6,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 | 入口 | 用法 | 说明 |
 | --- | --- | --- |
-| UI 会话头部三胶囊 | 无需操作，常驻显示 | **余额 + 本会话费用 + 峰谷时段** 并排显示在会话标题旁；点击任一胶囊立即刷新两个 |
+| UI 会话头部三胶囊 | 无需操作，常驻显示 | **余额 + 本会话费用 + 峰谷时段** 并排显示在会话标题旁；三个数字都是 NumberFlow 逐位滚动；点击任一胶囊立即刷新余额与会话费用（三颗一起显示加载态） |
 | 悬停明细 | 鼠标悬停 / 键盘聚焦 | **自定义浮层**（不再用原生 `title`）：余额（充值/赠金/美元）、会话费用（分模型拆分 + 占比条 + 缓存命中率 + 缓存节省）、峰谷规则原文 |
 | 斜杠命令 `/balance` | 聊天框输入 `/balance` | 查询账户余额（人民币优先，附美元） |
 | 斜杠命令 `/cost` | 聊天框输入 `/cost` | 当前会话费用明细 |
@@ -18,11 +18,29 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 ![dsh-billing 三胶囊](./docs/billing-pills.png)
 
-- **余额**：人民币金额（点击刷新，悬停看充值/赠金/美元明细）
+- **余额**：人民币金额（悬停看充值/赠金/美元明细；低于 `LOW_BALANCE_CNY`（默认 ¥5）标红，接口报 `is_available=false` 时显示「不可用」）
 - **会话**：`¥费用(总 token 量)`。金额与 token 数字都带 **NumberFlow 逐位滚动动画**，且按链条时序：**金额先滚动，滚动结束后 token 数字随后滚动**；会话切换/加载中显示默认 `¥0.00(0)`（不残留上一个会话的数字），金额为 `¥0.00` 时 token 不动画
-- **峰谷时段**：当前高峰/低谷 + 距下次切换的剩余时间
+- **峰谷时段**：当前高峰/低谷 + 距下次切换的剩余时间（数字同样走 NumberFlow；峰谷规则由宿主 `/billing/tide` 下发，客户端随分钟自算，到点即翻转）
 
 数字变化时逐位滚动（[NumberFlow](https://number-flow.barvian.me)，odometer 式：**只滚动值变化的位，未变的位静止**），含 `prefers-reduced-motion` 守卫（NumberFlow 内置 `respectMotionPreference`）。
+
+## 悬停浮层（实机截图）
+
+三个胶囊的悬停 / 键盘聚焦明细都是**自定义浮层**（暗底，沿用 DSH 的 `--dsw-alias-tooltip-bg`），取代原生 `title` —— 系统 tooltip 延迟约 1 秒、纯文本、数字无法对齐、暗色模式样式不可控。浮层动效走 [transitions.dev](https://transitions.dev) 的 `17-tooltip` 配方：进场 80ms 延迟 + 150ms fade/scale，离场 50ms 立即（`transition-delay` 只写在 hover 规则里，所以移开不粘手）。
+
+**余额** —— 人民币 / 美元的总额、充值、赠金；接口报 `is_available=false` 时标注「当前不可用」：
+
+![余额浮层](./docs/screenshots/popover-balance.png)
+
+**会话费用** —— 分模型拆分（模型 + 金额 + 请求次数 + 缓存命中率）；多于 1 个模型时给 3px 占比条与内联图例；底部给出「缓存节省」与「未命中则需」对照价；脚注是子代理会话数与数据新鲜度（相对时间）：
+
+![会话费用浮层](./docs/screenshots/popover-cost.png)
+
+**峰谷时段** —— 当前时段、距切换时长、官方规则原文：
+
+![峰谷浮层](./docs/screenshots/popover-tide.png)
+
+> 三张图摄于本机实机环境。会话费用那张拍在宿主侧 `cacheSaved` 字段生效**之前**，所以里面**没有「缓存节省」行**（该行要重启 `dsh web` 让 `host.js` 重新加载后才会出现）；除此之外即为当前样式。设计稿的四个方向见 [`docs/mockup/`](./docs/mockup/)。
 
 ## 0.6.8：时段胶囊补上刷新加载态（三个胶囊点击反馈一致）
 
@@ -155,10 +173,10 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 ```sh
 # 从本地目录安装
-dsh plugin --profile web add ./deepseek-billing
+dsh plugin --profile web add ./dsh-billing
 
 # 或从打包产物安装（跨机器分发推荐）
-dsh plugin --profile web add ./dsh-billing-0.5.0.tgz
+dsh plugin --profile web add ./dsh-billing-0.6.8.tgz
 
 # 或从 npm / git 安装（发布后）
 dsh plugin --profile web add dsh-billing
