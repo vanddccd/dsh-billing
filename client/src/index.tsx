@@ -573,7 +573,7 @@ function BillingPills(props: any) {
 
       {/* 峰谷时段 */}
       <span
-        className="billing-pill"
+        className={'billing-pill' + (refreshing ? ' is-refreshing' : '')}
         onClick={() => refreshByClick()}
         tabIndex={0}
         role="button"

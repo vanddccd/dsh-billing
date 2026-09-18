@@ -1038,7 +1038,7 @@ function BillingPills(props) {
   ), /* @__PURE__ */ (0, import_react3.createElement)(
     "span",
     {
-      className: "billing-pill",
+      className: "billing-pill" + (refreshing ? " is-refreshing" : ""),
       onClick: () => refreshByClick(),
       tabIndex: 0,
       role: "button",
