@@ -17,6 +17,9 @@ const TOKENS_FALLBACK_MS = 800
 /** 余额低于该值（人民币）时把余额数字标红。改这里即可调整阈值。 */
 const LOW_BALANCE_CNY = 5
 
+/** 点击刷新时「变暗」的最小可见时长：本地 RPC 可能几毫秒就返回，不保底会一闪而过。 */
+const REFRESH_DIM_MIN_MS = 220
+
 // 浮层的进出场时序**不在 JS 里** —— 由 pills.css 的 .billing-pop 纯 CSS 控制
 // （--dsb-tt-delay / --dsb-tt-in-dur / --dsb-tt-out-dur，配方见 transitions.dev 17-tooltip）。
 
@@ -411,11 +414,10 @@ function BillingPills(props: any) {
   const balEpochRef = useRef(0)
 
   // ---- 点击刷新的反馈状态 ----
-  // refreshing：请求进行中（数字区降透明度）。
-  // pulseKey：每次刷新**结束后**自增，配合 React key 让数字区重新挂载、重播一次 pop。
-  //   即使值没变（NumberFlow 不滚动）也能给出「已刷新」的确认——这正是原先缺的一环。
+  // refreshing：请求进行中，两颗真在取数的胶囊数字区降透明度（加载态）。
+  // 注意：这里**不碰数字本身**——NumberFlow 的逐位滚动、以及「金额先滚、tokens 随后」
+  // 的链条时序是既有动效；任何重挂载（例如用 key 强制重播动画）都会打断它，故一律不做。
   const [refreshing, setRefreshing] = useState(false)
-  const [pulseKey, setPulseKey] = useState(0)
 
   const refreshCost = useCallback(async () => {
     if (!sessionId) return
@@ -442,15 +444,24 @@ function BillingPills(props: any) {
     }
   }, [])
 
+  /**
+   * 刷新两个数据源。
+   * 「变暗」保底可见 REFRESH_DIM_MIN_MS —— 本地 RPC 可能几毫秒就返回，
+   * 不保底的话 dim 一闪而过，反馈等于没有。
+   */
   const refreshAll = useCallback(async () => {
     setRefreshing(true)
+    const startedAt = Date.now()
     try {
       // refreshCost / refreshBalance 各自内部吞掉错误，这里不会 reject；
       // 仍用 finally 保底，避免任何意外让 dim 状态永久挂着。
       await Promise.all([refreshCost(), refreshBalance()])
     } finally {
+      const elapsed = Date.now() - startedAt
+      if (elapsed < REFRESH_DIM_MIN_MS) {
+        await new Promise((resolve) => setTimeout(resolve, REFRESH_DIM_MIN_MS - elapsed))
+      }
       setRefreshing(false)
-      setPulseKey((k) => k + 1)
     }
   }, [refreshCost, refreshBalance])
 
@@ -509,16 +520,14 @@ function BillingPills(props: any) {
           <b className="billing-num billing-warn">不可用</b>
         ) : (
           <b className={balClass}>
-            <span className={'billing-pulse' + (pulseKey === 0 ? ' is-idle' : '')} key={pulseKey}>
-              <span className="billing-money-slot">
-                <Rolling
-                  value={cnyValue}
-                  placeholder={balFailed ? '—' : '…'}
-                  prefix="¥"
-                  fractionDigits={2}
-                  locales="zh-CN"
-                />
-              </span>
+            <span className="billing-money-slot">
+              <Rolling
+                value={cnyValue}
+                placeholder={balFailed ? '—' : '…'}
+                prefix="¥"
+                fractionDigits={2}
+                locales="zh-CN"
+              />
             </span>
           </b>
         )}
@@ -536,10 +545,7 @@ function BillingPills(props: any) {
       >
         会话{' '}
         <b className="billing-num">
-          {/* pulseKey 作 key：刷新结束后重新挂载一次 → 重播 pop，作为「已刷新」的确认信号 */}
-          <span className={'billing-pulse' + (pulseKey === 0 ? ' is-idle' : '')} key={pulseKey}>
-            <SessionAmount costData={costData} costFailed={costFailed} sessionId={sessionId} />
-          </span>
+          <SessionAmount costData={costData} costFailed={costFailed} sessionId={sessionId} />
         </b>
         {costData ? <Popover body={<CostPopoverBody data={costData} />} /> : null}
       </span>

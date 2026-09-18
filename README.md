@@ -24,6 +24,18 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 数字变化时逐位滚动（[NumberFlow](https://number-flow.barvian.me)，odometer 式：**只滚动值变化的位，未变的位静止**），含 `prefers-reduced-motion` 守卫（NumberFlow 内置 `respectMotionPreference`）。
 
+## 0.6.6：撤掉刷新 pop —— 它动了数字子树，打断了 NumberFlow 的链条时序
+
+0.6.5 用 `key={pulseKey}` 包住数字来重播 pop，**这是个实质性错误**：`key` 变化会让 `SessionAmount` 整个卸载重建 —— 内部 `tokensShown` 归零、NumberFlow 重新挂载，**「金额先滚、tokens 随后」的链条时序被打断**。
+
+数字动效（NumberFlow 逐位滚动 + 链条时序）是既有实现，本次只该给**浮层**加 transitions.dev 动效，不该触碰它。本版撤回：
+
+- `client/src/index.tsx`：删掉 `pulseKey` 与两处 `.billing-pulse` 包裹；`SessionAmount` 的用法与父级结构回到 0.6.3 原样（已用脚本逐字比对确认）
+- `client/src/pills.css`：删掉 `dsb-refresh-pop` 关键帧、`.billing-pulse`、`--dsb-pop-*` token。**浮层的 17-tooltip 动效原样保留**（那才是本次要做的）
+- **点击反馈保留「加载态」**：请求期间两颗真在取数的胶囊数字区降透明度。这是加载反馈（opacity 过渡，不改 DOM 结构、不重挂载），不是数字动效
+- 新增 `REFRESH_DIM_MIN_MS = 220`：本地 RPC 可能几毫秒就返回，不保底的话「变暗」一闪而过，反馈等于没有
+- 教训：**任何让既有动效宿主重挂载的「加动画」手段，都要先问它会不会打断宿主自己的时序**
+
 ## 0.6.5：悬停浮层动效对齐 transitions.dev + 点击刷新的确认反馈
 
 0.6.4 的浮层是**条件渲染瞬间显隐**（零过渡），且点击刷新在数值未变时**毫无反馈**。本版补齐这两块：
@@ -32,8 +44,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 - **引入 transitions.dev 的 motion token**：统一加 `--dsb-` 前缀避免与宿主冲突（`--dsb-tt-*` / `--dsb-duration-quick` / `--dsb-pop-*`），替掉原先硬编码的 `120ms ease`
 - **点击刷新的确认反馈**（原先缺的一环）：
   - 请求进行中：两颗真在取数的胶囊（余额 / 会话）数字区降到 40% 透明度
-  - 请求结束：数字区**重播一次极轻的 pop**（`translateY 3px + blur 2px + opacity`，260ms）。手法借 `02-number-pop-in`：React key 变化 → 重新挂载 → 动画重播，无需手动 reflow。**无论数值是否变化** —— 这正是「不知道刷没刷」的解药
-  - 首屏不白弹：`pulseKey === 0` 时挂 `.is-idle` 关掉动画
+  - ~~请求结束：数字区重播一次 pop~~ —— **已被 0.6.6 撤销**：它需要让数字子树重挂载才能重播动画，而重挂载会打断 NumberFlow 的链条时序。详见下节
 - **浮层时间戳改相对时间**：「14:03:47 更新」→「刚刚更新」/「12 秒前更新」。绝对时间在同一秒内连点两次看不出差别，相对时间一刷新就变
 - **`prefers-reduced-motion`**：skill 每个片段都带的守卫全部保留（动效关闭时浮层仍正常显示，只是没有过渡）
 - 回归：`testHooks` 增出 `relTime`；浮层渲染测试 17 项、SSR 测试 4 项全绿

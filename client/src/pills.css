@@ -2,7 +2,8 @@
    颜色取自 DSH design token（packages/client/ui-theme/src/styles/design-platform.css）：
    - 胶囊本体随主题：--dsw-alias-*
    - 浮层恒为暗底（沿用 DSH tooltip 语言）：--dsw-alias-tooltip-bg + --dsw-static-*
-   动效取自 transitions.dev 的 motion token 与 17-tooltip / 02-number-pop-in 配方。 */
+   动效取自 transitions.dev 的 motion token 与 17-tooltip 配方 —— **仅用于浮层**。
+   数字动效是 NumberFlow 的既有实现（逐位滚动 + 金额先滚、tokens 随后），一律不碰。 */
 
 /* ── 动效 token（transitions.dev 的 motion scale，统一加 --dsb- 前缀避免与宿主冲突）── */
 :root {
@@ -14,11 +15,6 @@
   --dsb-tt-out-dur: 50ms;
   --dsb-tt-delay: 80ms;
   --dsb-tt-scale: 0.98;
-  /* 刷新确认 pop：借 02-number-pop-in 的入场形态（位移 + 模糊 + 透明度） */
-  --dsb-pop-dur: 260ms;
-  --dsb-pop-distance: 3px;
-  --dsb-pop-blur: 2px;
-  --dsb-pop-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
 }
 
 .billing-pills { display: inline-flex; align-items: center; gap: 2px; }
@@ -163,29 +159,16 @@
 .billing-pop-tide-line { display: block; margin-top: 9px; color: var(--dsw-static-neutral-bluish-300); }
 .billing-pop-tide-rule { display: block; font-size: 11px; line-height: 1.6; color: var(--dsw-static-neutral-bluish-400); }
 
-/* ── 点击刷新的确认反馈 ──
-   值变了时 NumberFlow 会逐位滚动，本身就是反馈；但值没变时屏幕完全静止，
-   用户无法判断到底刷没刷。所以刷新**结束后**让数字区重播一次极轻的 pop（无论值是否变化）。
-   实现借 02-number-pop-in 的手法：React key 变化 → 重新挂载 → 动画重播，无需手动 reflow。
-   .is-idle 用于首次挂载（pulseKey === 0），避免页面加载时白弹一下。 */
-@keyframes dsb-refresh-pop {
-  0% {
-    transform: translateY(var(--dsb-pop-distance));
-    opacity: 0.55;
-    filter: blur(var(--dsb-pop-blur));
-  }
-  100% { transform: translateY(0); opacity: 1; filter: blur(0); }
-}
-.billing-pulse { display: inline-flex; align-items: baseline; }
-.billing-pulse:not(.is-idle) {
-  animation: dsb-refresh-pop var(--dsb-pop-dur) var(--dsb-pop-ease) both;
-}
+/* ── 点击刷新的反馈 ──
+   值变了时 NumberFlow 会逐位滚动，本身就是反馈；值没变时屏幕静止，所以补一个「加载态」：
+   请求期间数字区降透明度（见上方 .billing-pill.is-refreshing）。
+   刻意**不**做「刷新后 pop 一下」—— 那需要让数字子树重挂载才能重播动画，
+   而重挂载会打断 NumberFlow「金额先滚、tokens 随后」的链条时序。数字动效保持原样是硬约束。 */
 
 @media (prefers-reduced-motion: reduce) {
   .billing-pill,
   .billing-num,
   .billing-pop { transition: none; }
-  .billing-pulse { animation: none !important; }
   /* 动效关掉后，浮层仍须能显示 —— 只是不再有过渡 */
   .billing-pill:hover .billing-pop,
   .billing-pill:focus-visible .billing-pop { opacity: 1; pointer-events: auto; transform: scale(1); }
