@@ -618,7 +618,10 @@ export function formatCostText(usage, pricingCtx) {
     lines.push(`口径：本会话 + ${sub} 个子代理会话；子代理日志中 fork 继承的父会话事件已剔除，不重复计费。`)
   }
   if (usage?.failed > 0) {
-    lines.push(`⚠️ 另有 ${usage.failed} 个会话日志读取失败，未计入。`)
+    lines.push(`⚠️ 另有 ${usage.failed} 个会话的事件日志读取失败（非「未落盘」类），未计入。`)
+  }
+  if (usage?.missing > 0) {
+    lines.push(`另有 ${usage.missing} 个已结束的会话无法计入：dsh 现在只写投影缓存，事件日志不再落盘。`)
   }
   const src = pricingCtx?.source === 'online'
     ? `单价来源：官方在线同步${pricingCtx.syncedAt ? `（${new Date(pricingCtx.syncedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}）` : ''}`
@@ -791,10 +794,35 @@ export function apply(ctx, config) {
       })),
       subagentSessions: Math.max(0, (usage?.sessions ?? 0) - 1),
       failedSessions: usage?.failed ?? 0,
+      /** 已结束、事件日志未落盘因而无法计入的会话数（正常现象，与 failedSessions 区分）。 */
+      missingSessions: usage?.missing ?? 0,
       pricingSource: current.source,
       pricingSyncedAt: current.syncedAt,
       updatedAt: Date.now(),
     }
+  }
+
+  /** 已上报过的失败会话 id：同一会话只报一次，避免每次 RPC 都刷屏 stderr。 */
+  const reportedReadFailures = new Set()
+
+  /**
+   * 「事件日志不存在」与「日志真的读坏」必须分开。
+   *
+   * dsh 现在只写投影缓存（`~/.dsh/storages/session_projcache/`），事件日志不再落盘，
+   * 所以**已结束的会话回读必然失败** —— 这是正常现象，不该报警；
+   * 只有文件损坏 / 权限 / 解析失败才是真问题。
+   */
+  function isMissingLogError(detail) {
+    return /ENOENT|no such file|not found|不存在|未找到|missing/i.test(String(detail))
+  }
+
+  /** 失败去重上报。ctx.logger 在本插件上下文里实测不落盘，故一律同时写 stderr 兜底。 */
+  function reportReadFailure(id, detail) {
+    if (reportedReadFailures.has(id)) return
+    reportedReadFailures.add(id)
+    const line = `[dsh-billing] 会话 ${id} 的事件日志不可读：${detail}`
+    try { ctx.logger?.warn?.(line) } catch { /* logger 不可用不影响主流程 */ }
+    try { process.stderr.write(line + '\n') } catch { /* 同上 */ }
   }
 
   /** 递归展平后代树为会话 id 列表（防环、防重复）。 */
@@ -814,10 +842,10 @@ export function apply(ctx, config) {
    * traceSession 不可用或失败时降级为只统计本会话；单个子会话读取失败跳过并计数，
    * 绝不因个别损坏会话拖垮整体。
    *
-   * @returns {Promise<{steps: Map<string, object>, sessions: number, failed: number, ownReadable: boolean}>}
+   * @returns {Promise<{steps: Map<string, object>, sessions: number, failed: number, missing: number, ownReadable: boolean}>}
    */
   async function lineageUsage(sessionId) {
-    const empty = { steps: new Map(), sessions: 0, failed: 0, ownReadable: false }
+    const empty = { steps: new Map(), sessions: 0, failed: 0, missing: 0, ownReadable: false }
     if (typeof sessionId !== 'string' || sessionId === '') return empty
     const sessionQuery = ctx.get('sessionQuery')
     if (!sessionQuery || typeof sessionQuery.readSession !== 'function') return empty
@@ -836,21 +864,28 @@ export function apply(ctx, config) {
     const entries = []
     let sessions = 0
     let failed = 0
+    let missing = 0
     let ownReadable = false
     for (const id of ids) {
       let snapshot
       try {
         snapshot = await sessionQuery.readSession(id)
       } catch (error) {
-        failed += 1
-        ctx.logger?.warn?.('deepseek-billing: 会话 %s 日志读取失败，跳过：%s', id, error instanceof Error ? error.message : String(error))
+        const detail = error instanceof Error ? error.message : String(error)
+        if (isMissingLogError(detail)) {
+          // 已结束的会话、事件日志未落盘 —— 正常现象，只计数不报警
+          missing += 1
+        } else {
+          failed += 1
+          reportReadFailure(id, detail)
+        }
         continue
       }
       entries.push({ sessionId: id, events: snapshot?.events, inheritedEventCount: snapshot?.inheritedEventCount })
       sessions += 1
       if (id === sessionId) ownReadable = true
     }
-    return { steps: mergeLineageUsage(entries), sessions, failed, ownReadable }
+    return { steps: mergeLineageUsage(entries), sessions, failed, missing, ownReadable }
   }
 
   // ---- 命令：/balance ----

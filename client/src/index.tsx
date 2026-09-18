@@ -56,8 +56,10 @@ type CostData = {
   pricingSyncedAt?: string
   /** 聚合进来的子代理会话数（不含本会话）。 */
   subagentSessions?: number
-  /** 日志读取失败、未计入的会话数。 */
+  /** 日志读取失败、未计入的会话数（真异常：损坏 / 权限 / 解析）。 */
   failedSessions?: number
+  /** 已结束、事件日志未落盘因而未计入的会话数（正常现象，与 failedSessions 区分）。 */
+  missingSessions?: number
   /** 缓存命中省下的金额（推算值，非账单值）。 */
   cacheSaved?: number
   /** 本次统计时刻，用于显示数据新鲜度。 */
@@ -285,6 +287,7 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
   const saved = data.cacheSaved ?? 0
   const subagents = data.subagentSessions ?? 0
   const failed = data.failedSessions ?? 0
+  const missing = data.missingSessions ?? 0
   const updated = typeof data.updatedAt === 'number' ? relTime(data.updatedAt) : null
   const source =
     data.pricingSource === 'online'
@@ -327,11 +330,14 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
       <span className="billing-pop-foot">
         <span>
           {subagents > 0 ? `含 ${subagents} 个子代理会话` : '仅本会话'}
-          {failed > 0 ? ` · ⚠️ ${failed} 个日志读取失败` : ''}
+          {failed > 0 ? ` · ⚠️ ${failed} 个会话事件日志读取失败` : ''}
         </span>
         <span>{updated ? `${updated}更新` : ''}</span>
       </span>
-      <span className="billing-pop-source">{source}</span>
+      <span className="billing-pop-source">
+        {source}
+        {missing > 0 ? `　·　另有 ${missing} 个已结束会话未计入（事件日志未落盘）` : ''}
+      </span>
     </>
   )
 }
