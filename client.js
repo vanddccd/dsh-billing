@@ -779,14 +779,12 @@ function fmtRemainShort(hours) {
 }
 
 // client/src/pills.css
-var pills_default = "/* dsh-billing \u80F6\u56CA\u4E0E\u60AC\u505C\u6D6E\u5C42\u6837\u5F0F\u3002\n   \u6240\u6709\u989C\u8272\u53D6\u81EA DSH design token\uFF08packages/client/ui-theme/src/styles/design-platform.css\uFF09\uFF1A\n   - \u80F6\u56CA\u672C\u4F53\u968F\u4E3B\u9898\uFF1A--dsw-alias-*\n   - \u6D6E\u5C42\u6052\u4E3A\u6697\u5E95\uFF08\u6CBF\u7528 DSH tooltip \u8BED\u8A00\uFF09\uFF1A--dsw-alias-tooltip-bg + --dsw-static-*\n   \u4E0D\u518D\u786C\u7F16\u7801\u8272\u503C\u2014\u2014\u65E7\u7248\u7684 #43b97f / #e08a3e \u65E2\u4E0D\u8DDF\u968F\u4E3B\u9898\uFF0C\u4E5F\u504F\u79BB\u5B98\u65B9 state \u8BED\u4E49\u3002 */\n\n.billing-pills { display: inline-flex; align-items: center; gap: 2px; }\n.billing-pill {\n  /* \u6D6E\u5C42\u5B9A\u4F4D\u57FA\u51C6 */\n  position: relative;\n  display: inline-flex; align-items: center; gap: 3px;\n  min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;\n  background: transparent; color: var(--dsw-alias-label-secondary);\n  font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;\n  transition: background 120ms ease, color 120ms ease;\n}\n.billing-pill:hover,\n.billing-pill-open { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }\n.billing-pill:focus-visible { outline: 2px solid var(--dsw-alias-label-caption); outline-offset: 1px; }\n.billing-num { font-weight: 600; font-variant-numeric: tabular-nums; }\n\n/* \u72B6\u6001\u8272 = \u5B98\u65B9 state token\uFF08\u968F\u660E\u6697\u4E3B\u9898\u81EA\u52A8\u5207\u6362\uFF09 */\n.billing-ok { color: var(--dsw-alias-state-success-primary); }\n.billing-warn { color: var(--dsw-alias-state-warn-label); }\n/* \u4F4E\u4F59\u989D\uFF1A\u4F4E\u4E8E LOW_BALANCE_CNY\uFF08\u89C1 index.tsx\uFF09\u65F6\u6807\u7EA2 */\n.billing-low { color: var(--dsw-alias-state-error-primary); }\n\n/* NumberFlow \u6E32\u67D3\u4E3A <number-flow-react> \u81EA\u5B9A\u4E49\u5143\u7D20\uFF0C\u5185\u90E8\u662F open shadow DOM\uFF1A\n   CSS \u81EA\u5B9A\u4E49\u5C5E\u6027\u4E0E\u53EF\u7EE7\u627F\u5C5E\u6027\uFF08color / font-*\uFF09\u90FD\u80FD\u7A7F\u900F\uFF0C\u4F46 shadow \u5185 :host \u8BBE\u4E86\n   line-height:1 \u2014\u2014 light DOM \u89C4\u5219\u4F18\u5148\u7EA7\u66F4\u9AD8\uFF0C\u8FD9\u91CC\u628A\u884C\u9AD8\u62C9\u56DE\u80F6\u56CA\u7684 18px\u3002 */\n.billing-num number-flow-react { line-height: inherit; }\n\n/* \u91D1\u989D\u69FD\uFF1A\u56FA\u5B9A\u6700\u5C0F\u5BBD\u5EA6 + \u53F3\u5BF9\u9F50\u3002\u4F4D\u6570\u5207\u6362\uFF08\xA50.0234 \u2194 \xA50.023\uFF09\u65F6\u53EA\u5728\u69FD\u5185\u6536\u7F29\uFF0C\n   \u4E0D\u63A8\u52A8\u53F3\u4FA7 tokens\u30027.2ch \u8986\u76D6 \xA50.0000 \u4E0E \xA5123.45 \u4E24\u79CD\u6700\u957F\u5F62\u6001\u3002 */\n.billing-money-slot { display: inline-flex; justify-content: flex-end; min-width: 7.2ch; }\n/* tokens \u69FD\uFF1A\u53F3\u5BF9\u9F50\uFF1Btokens \u5355\u8C03\u589E\u957F\uFF0C\u65E0\u9700\u515C\u5E95\u5BBD\u5EA6\u3002 */\n.billing-tokens-slot { display: inline-flex; justify-content: flex-end; }\n.billing-amount { display: inline-flex; align-items: baseline; }\n\n/* \u2500\u2500 \u60AC\u505C\u6D6E\u5C42 \u2500\u2500\n   slot \u662F\u300C\u6865\u63A5\u533A\u300D\uFF1A\u4ECE\u80F6\u56CA\u5E95\u90E8\u4E00\u76F4\u5EF6\u4F38\u5230\u6D6E\u5C42\u9876\uFF08padding-top \u6491\u51FA\u89C6\u89C9\u4E0A\u7684 8px \u95F4\u9699\uFF09\uFF0C\n   \u8FD9\u6837\u9F20\u6807\u4ECE\u80F6\u56CA\u79FB\u5411\u6D6E\u5C42\u65F6\u4E0D\u4F1A\u7ECF\u8FC7\u975E hover \u533A\u57DF\uFF0C\u6D6E\u5C42\u5C31\u4E0D\u4F1A\u95EA\u65AD\u3002 */\n.billing-pop-slot {\n  position: absolute; top: 100%; left: -8px; z-index: 40;\n  display: block; padding-top: 8px;\n}\n/* \u6700\u53F3\u90A3\u9897\u80F6\u56CA\uFF08\u5CF0\u8C37\uFF09\u6539\u4E3A\u53F3\u5BF9\u9F50\uFF0C\u907F\u514D\u6D6E\u5C42\u6EA2\u51FA\u89C6\u53E3\u53F3\u7F18\u3002 */\n.billing-pill:last-child .billing-pop-slot { left: auto; right: -8px; }\n\n.billing-pop {\n  display: block; width: 322px; padding: 12px 14px 11px;\n  background: var(--dsw-alias-tooltip-bg);\n  border-radius: 8px;\n  /* \u8F7B\u9634\u5F71\uFF1A\u771F\u5B9E\u9875\u9762\u91CC\u6D6E\u5C42\u4F1A\u538B\u5728\u6D88\u606F\u6D41\u4E0A\uFF0C\u6697\u5E95\u4E0E\u6DF1\u8272\u5185\u5BB9\u76F8\u90BB\u65F6\u9700\u8981\u4E00\u5C42\u5206\u79BB */\n  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);\n  font-size: 12px; line-height: 1.55; font-weight: 400;\n  text-align: left; white-space: normal;\n}\n\n.billing-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }\n.billing-pop-label { color: var(--dsw-static-neutral-bluish-500); font-size: 11px; }\n.billing-pop-amt {\n  font-size: 18px; font-weight: 600; letter-spacing: -0.015em;\n  color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums;\n}\n.billing-pop-tk { margin-left: 7px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n.billing-pop-bad { font-size: 11px; color: var(--dsw-static-amber-400); }\n.billing-pop-warn { color: var(--dsw-static-amber-400); }\n.billing-pop-hit { color: var(--dsw-static-green-400); }\n\n/* \u5360\u6BD4\uFF1A3px \u5806\u53E0\u6761\uFF0C\u65E0\u5706\u89D2\u65E0\u5BB9\u5668\uFF1B\u5355\u6A21\u578B\u65F6\u4E0D\u6E32\u67D3 */\n.billing-pop-share-wrap { display: block; margin-top: 11px; }\n.billing-pop-share { display: flex; height: 3px; gap: 2px; margin-bottom: 7px; }\n.billing-seg { display: block; height: 100%; }\n.billing-seg-0 { background: var(--dsw-static-deepseek-450); }\n.billing-seg-1 { background: rgba(255, 255, 255, 0.3); }\n.billing-seg-2 { background: rgba(255, 255, 255, 0.46); }\n.billing-seg-3 { background: rgba(255, 255, 255, 0.62); }\n.billing-pop-lg {\n  display: flex; flex-wrap: wrap; gap: 5px 14px;\n  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;\n}\n.billing-pop-lg > span { display: inline-flex; align-items: baseline; gap: 5px; }\n.billing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 1px; }\n\n.billing-pop-rule { display: block; height: 1px; background: rgba(255, 255, 255, 0.13); margin: 11px 0; }\n\n.billing-pop-model { display: block; }\n.billing-pop-mrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }\n.billing-pop-mname {\n  color: var(--dsw-static-neutral-bluish-50);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\n}\n.billing-pop-mamt { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }\n.billing-pop-msub {\n  display: block; margin: 2px 0 9px;\n  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;\n}\n.billing-pop-model:last-of-type .billing-pop-msub { margin-bottom: 0; }\n\n/* \u7F13\u5B58\u8282\u7701\uFF08\u63A8\u7B97\u503C\uFF09\uFF1A\u5BBF\u4E3B\u7B97\u597D\u4E0B\u53D1\u2014\u2014\u5BA2\u6237\u7AEF\u6CA1\u6709\u5355\u4EF7\uFF0C\u7B97\u4E0D\u51FA\u6765 */\n.billing-pop-save { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }\n.billing-pop-save-lbl { font-size: 11px; color: var(--dsw-static-neutral-bluish-300); }\n.billing-pop-save-val { font-weight: 600; color: var(--dsw-static-green-400); font-variant-numeric: tabular-nums; }\n.billing-pop-save-sub { margin-left: 8px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n\n.billing-pop-foot {\n  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;\n  margin-top: 10px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500);\n}\n.billing-pop-source { display: block; margin-top: 3px; font-size: 11px; color: var(--dsw-static-neutral-bluish-600); }\n.billing-pop-note { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-400); }\n\n/* \u4F59\u989D\u6D6E\u5C42 */\n.billing-pop-bal { display: block; margin-top: 9px; }\n.billing-pop-bal-head {\n  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;\n  color: var(--dsw-static-neutral-bluish-300);\n}\n.billing-pop-bal-total { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }\n.billing-pop-bal-sub { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n\n/* \u5CF0\u8C37\u6D6E\u5C42 */\n.billing-pop-tide-line { display: block; margin-top: 9px; color: var(--dsw-static-neutral-bluish-300); }\n.billing-pop-tide-rule { display: block; font-size: 11px; line-height: 1.6; color: var(--dsw-static-neutral-bluish-400); }\n\n/* \u52A8\u6548\u504F\u597D\uFF1A\u5173\u6389\u80F6\u56CA\u7684\u72B6\u6001\u8FC7\u6E21\uFF08NumberFlow \u81EA\u5E26 respectMotionPreference \u5B88\u536B\uFF09 */\n@media (prefers-reduced-motion: reduce) {\n  .billing-pill { transition: none; }\n}\n";
+var pills_default = "/* dsh-billing \u80F6\u56CA\u4E0E\u60AC\u505C\u6D6E\u5C42\u6837\u5F0F\u3002\n   \u989C\u8272\u53D6\u81EA DSH design token\uFF08packages/client/ui-theme/src/styles/design-platform.css\uFF09\uFF1A\n   - \u80F6\u56CA\u672C\u4F53\u968F\u4E3B\u9898\uFF1A--dsw-alias-*\n   - \u6D6E\u5C42\u6052\u4E3A\u6697\u5E95\uFF08\u6CBF\u7528 DSH tooltip \u8BED\u8A00\uFF09\uFF1A--dsw-alias-tooltip-bg + --dsw-static-*\n   \u52A8\u6548\u53D6\u81EA transitions.dev \u7684 motion token \u4E0E 17-tooltip / 02-number-pop-in \u914D\u65B9\u3002 */\n\n/* \u2500\u2500 \u52A8\u6548 token\uFF08transitions.dev \u7684 motion scale\uFF0C\u7EDF\u4E00\u52A0 --dsb- \u524D\u7F00\u907F\u514D\u4E0E\u5BBF\u4E3B\u51B2\u7A81\uFF09\u2500\u2500 */\n:root {\n  --dsb-duration-quick: 150ms;\n  --dsb-ease-out: ease-out;\n  --dsb-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);\n  /* 17-tooltip\uFF1A\u8FDB\u6709\u5EF6\u8FDF + fade/scale\uFF0C\u51FA\u7ACB\u5373 */\n  --dsb-tt-in-dur: 150ms;\n  --dsb-tt-out-dur: 50ms;\n  --dsb-tt-delay: 80ms;\n  --dsb-tt-scale: 0.98;\n  /* \u5237\u65B0\u786E\u8BA4 pop\uFF1A\u501F 02-number-pop-in \u7684\u5165\u573A\u5F62\u6001\uFF08\u4F4D\u79FB + \u6A21\u7CCA + \u900F\u660E\u5EA6\uFF09 */\n  --dsb-pop-dur: 260ms;\n  --dsb-pop-distance: 3px;\n  --dsb-pop-blur: 2px;\n  --dsb-pop-ease: cubic-bezier(0.34, 1.45, 0.64, 1);\n}\n\n.billing-pills { display: inline-flex; align-items: center; gap: 2px; }\n.billing-pill {\n  /* \u6D6E\u5C42\u7684\u5B9A\u4F4D\u57FA\u51C6\uFF08\u540C\u65F6\u4E5F\u662F\u5B83\u7684 hover \u76EE\u6807\uFF0C\u89C1\u4E0B\uFF09 */\n  position: relative;\n  display: inline-flex; align-items: center; gap: 3px;\n  min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;\n  background: transparent; color: var(--dsw-alias-label-secondary);\n  font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;\n  transition: background var(--dsb-duration-quick) var(--dsb-ease-out),\n              color var(--dsb-duration-quick) var(--dsb-ease-out);\n}\n.billing-pill:hover,\n.billing-pill:focus-visible { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }\n.billing-pill:focus-visible { outline: 2px solid var(--dsw-alias-label-caption); outline-offset: 1px; }\n.billing-num {\n  font-weight: 600; font-variant-numeric: tabular-nums;\n  transition: opacity var(--dsb-duration-quick) var(--dsb-ease-out);\n}\n/* \u8BF7\u6C42\u8FDB\u884C\u4E2D\uFF1A\u6570\u5B57\u533A\u964D\u900F\u660E\u5EA6\uFF08\u300C\u6B63\u5728\u53D6\u6570\u300D\uFF09 */\n.billing-pill.is-refreshing .billing-num { opacity: 0.4; }\n\n/* \u72B6\u6001\u8272 = \u5B98\u65B9 state token\uFF08\u968F\u660E\u6697\u4E3B\u9898\u81EA\u52A8\u5207\u6362\uFF09 */\n.billing-ok { color: var(--dsw-alias-state-success-primary); }\n.billing-warn { color: var(--dsw-alias-state-warn-label); }\n/* \u4F4E\u4F59\u989D\uFF1A\u4F4E\u4E8E LOW_BALANCE_CNY\uFF08\u89C1 index.tsx\uFF09\u65F6\u6807\u7EA2 */\n.billing-low { color: var(--dsw-alias-state-error-primary); }\n\n/* NumberFlow \u6E32\u67D3\u4E3A <number-flow-react> \u81EA\u5B9A\u4E49\u5143\u7D20\uFF0C\u5185\u90E8\u662F open shadow DOM\uFF1A\n   CSS \u81EA\u5B9A\u4E49\u5C5E\u6027\u4E0E\u53EF\u7EE7\u627F\u5C5E\u6027\uFF08color / font-*\uFF09\u90FD\u80FD\u7A7F\u900F\uFF0C\u4F46 shadow \u5185 :host \u8BBE\u4E86\n   line-height:1 \u2014\u2014 light DOM \u89C4\u5219\u4F18\u5148\u7EA7\u66F4\u9AD8\uFF0C\u8FD9\u91CC\u628A\u884C\u9AD8\u62C9\u56DE\u80F6\u56CA\u7684 18px\u3002 */\n.billing-num number-flow-react { line-height: inherit; }\n\n/* \u91D1\u989D\u69FD\uFF1A\u56FA\u5B9A\u6700\u5C0F\u5BBD\u5EA6 + \u53F3\u5BF9\u9F50\u3002\u4F4D\u6570\u5207\u6362\uFF08\xA50.0234 \u2194 \xA50.023\uFF09\u65F6\u53EA\u5728\u69FD\u5185\u6536\u7F29\uFF0C\n   \u4E0D\u63A8\u52A8\u53F3\u4FA7 tokens\u30027.2ch \u8986\u76D6 \xA50.0000 \u4E0E \xA5123.45 \u4E24\u79CD\u6700\u957F\u5F62\u6001\u3002 */\n.billing-money-slot { display: inline-flex; justify-content: flex-end; min-width: 7.2ch; }\n/* tokens \u69FD\uFF1A\u53F3\u5BF9\u9F50\uFF1Btokens \u5355\u8C03\u589E\u957F\uFF0C\u65E0\u9700\u515C\u5E95\u5BBD\u5EA6\u3002 */\n.billing-tokens-slot { display: inline-flex; justify-content: flex-end; }\n.billing-amount { display: inline-flex; align-items: baseline; }\n\n/* \u2500\u2500 \u60AC\u505C\u6D6E\u5C42\uFF08transitions.dev 17-tooltip \u914D\u65B9\uFF09\u2500\u2500\n   \u7EAF CSS \u9A71\u52A8\uFF0C\u6CA1\u6709 JS \u5B9A\u65F6\u5668\uFF1A\n   \xB7 \u8FDB\u573A\u5EF6\u8FDF\u4E0E\u65F6\u957F\u53EA\u5199\u5728 hover/focus \u89C4\u5219\u91CC \u2014\u2014 \u79BB\u5F00\u65F6\u5EF6\u8FDF\u5F52\u96F6\uFF0C\u6D88\u5931\u7ACB\u5373\u64AD\u653E\uFF0C\u4E0D\u7C98\u624B\uFF1B\n   \xB7 .billing-pop \u662F\u300C\u8FC7\u6E21 + \u6865\u63A5\u300D\u7684\u8F7D\u4F53\uFF1Apadding-top \u6491\u51FA\u7684 8px \u65E2\u662F\u89C6\u89C9\u95F4\u9699\uFF0C\n     \u4E5F\u4ECD\u662F hover \u533A\u57DF\uFF0C\u6307\u9488\u4ECE\u80F6\u56CA\u79FB\u5411\u6D6E\u5C42\u4E0D\u4F1A\u7ECF\u8FC7\u975E hover \u533A\u800C\u95EA\u65AD\uFF1B\n   \xB7 \u770B\u5F97\u89C1\u7684\u5361\u7247\u662F\u5185\u5C42 .billing-pop-card\u3002 */\n.billing-pop {\n  position: absolute; top: 100%; left: -8px; z-index: 40;\n  display: block; padding-top: 8px;\n  opacity: 0; pointer-events: none;\n  transform: scale(var(--dsb-tt-scale));\n  transform-origin: 50% 0;\n  transition: opacity var(--dsb-tt-out-dur) var(--dsb-ease-out),\n              transform var(--dsb-tt-out-dur) var(--dsb-ease-out);\n}\n/* \u6700\u53F3\u90A3\u9897\u80F6\u56CA\uFF08\u5CF0\u8C37\uFF09\u6539\u4E3A\u53F3\u5BF9\u9F50\uFF0C\u907F\u514D\u6D6E\u5C42\u6EA2\u51FA\u89C6\u53E3\u53F3\u7F18\u3002 */\n.billing-pill:last-child .billing-pop { left: auto; right: -8px; }\n\n.billing-pill:hover .billing-pop,\n.billing-pill:focus-visible .billing-pop {\n  opacity: 1; pointer-events: auto;\n  transform: scale(1);\n  transition-duration: var(--dsb-tt-in-dur);\n  transition-delay: var(--dsb-tt-delay);\n}\n\n.billing-pop-card {\n  display: block; width: 322px; padding: 12px 14px 11px;\n  background: var(--dsw-alias-tooltip-bg);\n  border-radius: 8px;\n  /* \u8F7B\u9634\u5F71\uFF1A\u771F\u5B9E\u9875\u9762\u91CC\u6D6E\u5C42\u4F1A\u538B\u5728\u6D88\u606F\u6D41\u4E0A\uFF0C\u6697\u5E95\u4E0E\u6DF1\u8272\u5185\u5BB9\u76F8\u90BB\u65F6\u9700\u8981\u4E00\u5C42\u5206\u79BB */\n  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);\n  font-size: 12px; line-height: 1.55; font-weight: 400;\n  text-align: left; white-space: normal;\n}\n\n.billing-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }\n.billing-pop-label { color: var(--dsw-static-neutral-bluish-500); font-size: 11px; }\n.billing-pop-amt {\n  font-size: 18px; font-weight: 600; letter-spacing: -0.015em;\n  color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums;\n}\n.billing-pop-tk { margin-left: 7px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n.billing-pop-bad { font-size: 11px; color: var(--dsw-static-amber-400); }\n.billing-pop-warn { color: var(--dsw-static-amber-400); }\n.billing-pop-hit { color: var(--dsw-static-green-400); }\n\n/* \u5360\u6BD4\uFF1A3px \u5806\u53E0\u6761\uFF0C\u65E0\u5706\u89D2\u65E0\u5BB9\u5668\uFF1B\u5355\u6A21\u578B\u65F6\u4E0D\u6E32\u67D3 */\n.billing-pop-share-wrap { display: block; margin-top: 11px; }\n.billing-pop-share { display: flex; height: 3px; gap: 2px; margin-bottom: 7px; }\n.billing-seg { display: block; height: 100%; }\n.billing-seg-0 { background: var(--dsw-static-deepseek-450); }\n.billing-seg-1 { background: rgba(255, 255, 255, 0.3); }\n.billing-seg-2 { background: rgba(255, 255, 255, 0.46); }\n.billing-seg-3 { background: rgba(255, 255, 255, 0.62); }\n.billing-pop-lg {\n  display: flex; flex-wrap: wrap; gap: 5px 14px;\n  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;\n}\n.billing-pop-lg > span { display: inline-flex; align-items: baseline; gap: 5px; }\n.billing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 1px; }\n\n.billing-pop-rule { display: block; height: 1px; background: rgba(255, 255, 255, 0.13); margin: 11px 0; }\n\n.billing-pop-model { display: block; }\n.billing-pop-mrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }\n.billing-pop-mname {\n  color: var(--dsw-static-neutral-bluish-50);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\n}\n.billing-pop-mamt { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }\n.billing-pop-msub {\n  display: block; margin: 2px 0 9px;\n  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;\n}\n.billing-pop-model:last-of-type .billing-pop-msub { margin-bottom: 0; }\n\n/* \u7F13\u5B58\u8282\u7701\uFF08\u63A8\u7B97\u503C\uFF09\uFF1A\u5BBF\u4E3B\u7B97\u597D\u4E0B\u53D1\u2014\u2014\u5BA2\u6237\u7AEF\u6CA1\u6709\u5355\u4EF7\uFF0C\u7B97\u4E0D\u51FA\u6765 */\n.billing-pop-save { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }\n.billing-pop-save-lbl { font-size: 11px; color: var(--dsw-static-neutral-bluish-300); }\n.billing-pop-save-val { font-weight: 600; color: var(--dsw-static-green-400); font-variant-numeric: tabular-nums; }\n.billing-pop-save-sub { margin-left: 8px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n\n.billing-pop-foot {\n  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;\n  margin-top: 10px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500);\n}\n.billing-pop-source { display: block; margin-top: 3px; font-size: 11px; color: var(--dsw-static-neutral-bluish-600); }\n.billing-pop-note { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-400); }\n\n/* \u4F59\u989D\u6D6E\u5C42 */\n.billing-pop-bal { display: block; margin-top: 9px; }\n.billing-pop-bal-head {\n  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;\n  color: var(--dsw-static-neutral-bluish-300);\n}\n.billing-pop-bal-total { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }\n.billing-pop-bal-sub { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n\n/* \u5CF0\u8C37\u6D6E\u5C42 */\n.billing-pop-tide-line { display: block; margin-top: 9px; color: var(--dsw-static-neutral-bluish-300); }\n.billing-pop-tide-rule { display: block; font-size: 11px; line-height: 1.6; color: var(--dsw-static-neutral-bluish-400); }\n\n/* \u2500\u2500 \u70B9\u51FB\u5237\u65B0\u7684\u786E\u8BA4\u53CD\u9988 \u2500\u2500\n   \u503C\u53D8\u4E86\u65F6 NumberFlow \u4F1A\u9010\u4F4D\u6EDA\u52A8\uFF0C\u672C\u8EAB\u5C31\u662F\u53CD\u9988\uFF1B\u4F46\u503C\u6CA1\u53D8\u65F6\u5C4F\u5E55\u5B8C\u5168\u9759\u6B62\uFF0C\n   \u7528\u6237\u65E0\u6CD5\u5224\u65AD\u5230\u5E95\u5237\u6CA1\u5237\u3002\u6240\u4EE5\u5237\u65B0**\u7ED3\u675F\u540E**\u8BA9\u6570\u5B57\u533A\u91CD\u64AD\u4E00\u6B21\u6781\u8F7B\u7684 pop\uFF08\u65E0\u8BBA\u503C\u662F\u5426\u53D8\u5316\uFF09\u3002\n   \u5B9E\u73B0\u501F 02-number-pop-in \u7684\u624B\u6CD5\uFF1AReact key \u53D8\u5316 \u2192 \u91CD\u65B0\u6302\u8F7D \u2192 \u52A8\u753B\u91CD\u64AD\uFF0C\u65E0\u9700\u624B\u52A8 reflow\u3002\n   .is-idle \u7528\u4E8E\u9996\u6B21\u6302\u8F7D\uFF08pulseKey === 0\uFF09\uFF0C\u907F\u514D\u9875\u9762\u52A0\u8F7D\u65F6\u767D\u5F39\u4E00\u4E0B\u3002 */\n@keyframes dsb-refresh-pop {\n  0% {\n    transform: translateY(var(--dsb-pop-distance));\n    opacity: 0.55;\n    filter: blur(var(--dsb-pop-blur));\n  }\n  100% { transform: translateY(0); opacity: 1; filter: blur(0); }\n}\n.billing-pulse { display: inline-flex; align-items: baseline; }\n.billing-pulse:not(.is-idle) {\n  animation: dsb-refresh-pop var(--dsb-pop-dur) var(--dsb-pop-ease) both;\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .billing-pill,\n  .billing-num,\n  .billing-pop { transition: none; }\n  .billing-pulse { animation: none !important; }\n  /* \u52A8\u6548\u5173\u6389\u540E\uFF0C\u6D6E\u5C42\u4ECD\u987B\u80FD\u663E\u793A \u2014\u2014 \u53EA\u662F\u4E0D\u518D\u6709\u8FC7\u6E21 */\n  .billing-pill:hover .billing-pop,\n  .billing-pill:focus-visible .billing-pop { opacity: 1; pointer-events: auto; transform: scale(1); }\n}\n";
 
 // client/src/index.tsx
 var BILLING_CSS_ID = "dsh-billing-pills";
 var TOKENS_FALLBACK_MS = 800;
 var LOW_BALANCE_CNY = 5;
-var POP_SHOW_DELAY_MS = 120;
-var POP_HIDE_DELAY_MS = 90;
 if (typeof document !== "undefined") {
   let tag = document.querySelector(`style[data-plugin-css="${BILLING_CSS_ID}"]`);
   if (!tag) {
@@ -871,9 +869,8 @@ function useTide(sessionId) {
   }, []);
   return computeTide(new Date(now), rules ?? void 0);
 }
-function Popover({ open, body }) {
-  if (!open) return null;
-  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-slot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop", role: "tooltip" }, body));
+function Popover({ body }) {
+  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-card", role: "tooltip" }, body));
 }
 function hitRate(m2) {
   const denom = m2.inputTokens + m2.cacheReadTokens;
@@ -884,6 +881,16 @@ function shortModel(model) {
   const bare = model.includes(":") ? model.slice(model.lastIndexOf(":") + 1) : model;
   const short = bare.replace(/^deepseek-/, "").replace(/^v\d+(?:\.\d+)?-/, "");
   return short.length > 20 ? short.slice(0, 19) + "\u2026" : short;
+}
+function relTime(ts) {
+  const secs = Math.max(0, Math.round((Date.now() - ts) / 1e3));
+  if (secs < 10) return "\u521A\u521A";
+  if (secs < 60) return `${secs} \u79D2\u524D`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} \u5206\u949F\u524D`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} \u5C0F\u65F6\u524D`;
+  return new Date(ts).toLocaleDateString();
 }
 function ShareBar({ models, total }) {
   const pct = (m2) => total > 0 ? m2.cost / total * 100 : 0;
@@ -903,9 +910,9 @@ function CostPopoverBody({ data }) {
   const saved = data.cacheSaved ?? 0;
   const subagents = data.subagentSessions ?? 0;
   const failed = data.failedSessions ?? 0;
-  const updated = typeof data.updatedAt === "number" ? new Date(data.updatedAt).toLocaleTimeString() : null;
+  const updated = typeof data.updatedAt === "number" ? relTime(data.updatedAt) : null;
   const source = data.pricingSource === "online" ? `\u5355\u4EF7\u6765\u6E90\uFF1A\u5B98\u65B9\u5728\u7EBF\u540C\u6B65${data.pricingSyncedAt ? `\uFF08${new Date(data.pricingSyncedAt).toLocaleString()}\uFF09` : ""}` : data.pricingSource === "builtin" ? "\u5355\u4EF7\u6765\u6E90\uFF1A\u5185\u7F6E\u9ED8\u8BA4\uFF08\u5728\u7EBF\u540C\u6B65\u4E0D\u53EF\u7528\uFF0C\u82E5\u5B98\u65B9\u6539\u4EF7\u53EF\u80FD\u5931\u51C6\uFF09" : "\u5355\u4EF7\u6765\u6E90\uFF1A\u5F85\u5BBF\u4E3B\u4E0A\u62A5\uFF08\u82E5\u521A\u66F4\u65B0\u8FC7\u63D2\u4EF6\uFF0C\u8BF7\u91CD\u542F dsh web \u540E\u5237\u65B0\u9875\u9762\uFF09";
-  return /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-label" }, multi ? `\u672C\u4F1A\u8BDD\u8D39\u7528 \xB7 ${models.length} \u4E2A\u6A21\u578B` : "\u672C\u4F1A\u8BDD\u8D39\u7528"), /* @__PURE__ */ (0, import_react3.createElement)("span", null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-amt" }, "\xA5", fmtCost(total)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-tk" }, data.totalTokens.toLocaleString(), " tk"))), multi ? /* @__PURE__ */ (0, import_react3.createElement)(ShareBar, { models, total }) : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), models.map((m2, i2) => /* @__PURE__ */ (0, import_react3.createElement)(ModelRow, { key: m2.model + i2, m: m2 })), saved > 0 ? /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-lbl" }, "\u7F13\u5B58\u8282\u7701"), /* @__PURE__ */ (0, import_react3.createElement)("span", null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-val" }, "\xA5", fmtCost(saved)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-sub" }, "\u672A\u547D\u4E2D\u5219\u9700 \xA5", fmtCost(total + saved))))) : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-foot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, subagents > 0 ? `\u542B ${subagents} \u4E2A\u5B50\u4EE3\u7406\u4F1A\u8BDD` : "\u4EC5\u672C\u4F1A\u8BDD", failed > 0 ? ` \xB7 \u26A0\uFE0F ${failed} \u4E2A\u65E5\u5FD7\u8BFB\u53D6\u5931\u8D25` : ""), /* @__PURE__ */ (0, import_react3.createElement)("span", null, updated ? `${updated} \u66F4\u65B0` : "")), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-source" }, source));
+  return /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-label" }, multi ? `\u672C\u4F1A\u8BDD\u8D39\u7528 \xB7 ${models.length} \u4E2A\u6A21\u578B` : "\u672C\u4F1A\u8BDD\u8D39\u7528"), /* @__PURE__ */ (0, import_react3.createElement)("span", null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-amt" }, "\xA5", fmtCost(total)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-tk" }, data.totalTokens.toLocaleString(), " tk"))), multi ? /* @__PURE__ */ (0, import_react3.createElement)(ShareBar, { models, total }) : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), models.map((m2, i2) => /* @__PURE__ */ (0, import_react3.createElement)(ModelRow, { key: m2.model + i2, m: m2 })), saved > 0 ? /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-lbl" }, "\u7F13\u5B58\u8282\u7701"), /* @__PURE__ */ (0, import_react3.createElement)("span", null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-val" }, "\xA5", fmtCost(saved)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-sub" }, "\u672A\u547D\u4E2D\u5219\u9700 \xA5", fmtCost(total + saved))))) : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-foot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, subagents > 0 ? `\u542B ${subagents} \u4E2A\u5B50\u4EE3\u7406\u4F1A\u8BDD` : "\u4EC5\u672C\u4F1A\u8BDD", failed > 0 ? ` \xB7 \u26A0\uFE0F ${failed} \u4E2A\u65E5\u5FD7\u8BFB\u53D6\u5931\u8D25` : ""), /* @__PURE__ */ (0, import_react3.createElement)("span", null, updated ? `${updated}\u66F4\u65B0` : "")), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-source" }, source));
 }
 function BalancePopoverBody({ balData, cny, usd }) {
   const row = (label, info, symbol) => /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal", key: label }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, label), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal-total" }, symbol, info.totalBalance)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal-sub" }, "\u5145\u503C ", symbol, info.toppedUpBalance, " \xB7 \u8D60\u91D1 ", symbol, info.grantedBalance));
@@ -922,31 +929,8 @@ function BillingPills(props) {
   const [balFailed, setBalFailed] = (0, import_react3.useState)(false);
   const costEpochRef = (0, import_react3.useRef)(0);
   const balEpochRef = (0, import_react3.useRef)(0);
-  const [openPop, setOpenPop] = (0, import_react3.useState)(null);
-  const showTimer = (0, import_react3.useRef)(null);
-  const hideTimer = (0, import_react3.useRef)(null);
-  const clearTimers = (0, import_react3.useCallback)(() => {
-    if (showTimer.current !== null) {
-      window.clearTimeout(showTimer.current);
-      showTimer.current = null;
-    }
-    if (hideTimer.current !== null) {
-      window.clearTimeout(hideTimer.current);
-      hideTimer.current = null;
-    }
-  }, []);
-  const showPop = (0, import_react3.useCallback)(
-    (key) => {
-      clearTimers();
-      showTimer.current = window.setTimeout(() => setOpenPop(key), POP_SHOW_DELAY_MS);
-    },
-    [clearTimers]
-  );
-  const hidePop = (0, import_react3.useCallback)(() => {
-    clearTimers();
-    hideTimer.current = window.setTimeout(() => setOpenPop(null), POP_HIDE_DELAY_MS);
-  }, [clearTimers]);
-  (0, import_react3.useEffect)(() => clearTimers, [clearTimers]);
+  const [refreshing, setRefreshing] = (0, import_react3.useState)(false);
+  const [pulseKey, setPulseKey] = (0, import_react3.useState)(0);
   const refreshCost = (0, import_react3.useCallback)(async () => {
     if (!sessionId) return;
     const epoch = ++costEpochRef.current;
@@ -970,9 +954,14 @@ function BillingPills(props) {
       if (epoch === balEpochRef.current) setBalFailed(true);
     }
   }, []);
-  const refreshAll = (0, import_react3.useCallback)(() => {
-    refreshCost();
-    refreshBalance();
+  const refreshAll = (0, import_react3.useCallback)(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshCost(), refreshBalance()]);
+    } finally {
+      setRefreshing(false);
+      setPulseKey((k3) => k3 + 1);
+    }
   }, [refreshCost, refreshBalance]);
   (0, import_react3.useEffect)(() => {
     setCostData(null);
@@ -1003,13 +992,10 @@ function BillingPills(props) {
   const balLow = !balUnavailable && cnyValue !== null && cnyValue < LOW_BALANCE_CNY;
   const balClass = "billing-num" + (balUnavailable ? "" : cnyValue === null ? "" : balLow ? " billing-low" : " billing-ok");
   const aria = (label, detail) => `${label}\u3002\u60AC\u505C\u67E5\u770B\u660E\u7EC6\uFF0C\u70B9\u51FB\u7ACB\u5373\u5237\u65B0\u3002${detail}`;
-  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pills", onMouseLeave: hidePop }, /* @__PURE__ */ (0, import_react3.createElement)(
+  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pills" }, /* @__PURE__ */ (0, import_react3.createElement)(
     "span",
     {
-      className: "billing-pill" + (openPop === "balance" ? " billing-pill-open" : ""),
-      onMouseEnter: () => showPop("balance"),
-      onFocus: () => showPop("balance"),
-      onBlur: hidePop,
+      className: "billing-pill" + (refreshing ? " is-refreshing" : ""),
       onClick: () => refreshAll(),
       tabIndex: 0,
       role: "button",
@@ -1017,7 +1003,7 @@ function BillingPills(props) {
     },
     "\u4F59\u989D",
     " ",
-    balUnavailable ? /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num billing-warn" }, "\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react3.createElement)("b", { className: balClass }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-money-slot" }, /* @__PURE__ */ (0, import_react3.createElement)(
+    balUnavailable ? /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num billing-warn" }, "\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react3.createElement)("b", { className: balClass }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pulse" + (pulseKey === 0 ? " is-idle" : ""), key: pulseKey }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-money-slot" }, /* @__PURE__ */ (0, import_react3.createElement)(
       Rolling,
       {
         value: cnyValue,
@@ -1026,15 +1012,12 @@ function BillingPills(props) {
         fractionDigits: 2,
         locales: "zh-CN"
       }
-    ))),
-    /* @__PURE__ */ (0, import_react3.createElement)(Popover, { open: openPop === "balance", body: /* @__PURE__ */ (0, import_react3.createElement)(BalancePopoverBody, { balData, cny, usd }) })
+    )))),
+    balData ? /* @__PURE__ */ (0, import_react3.createElement)(Popover, { body: /* @__PURE__ */ (0, import_react3.createElement)(BalancePopoverBody, { balData, cny, usd }) }) : null
   ), /* @__PURE__ */ (0, import_react3.createElement)(
     "span",
     {
-      className: "billing-pill" + (openPop === "cost" ? " billing-pill-open" : ""),
-      onMouseEnter: () => showPop("cost"),
-      onFocus: () => showPop("cost"),
-      onBlur: hidePop,
+      className: "billing-pill" + (refreshing ? " is-refreshing" : ""),
       onClick: () => refreshAll(),
       tabIndex: 0,
       role: "button",
@@ -1043,15 +1026,12 @@ function BillingPills(props) {
     },
     "\u4F1A\u8BDD",
     " ",
-    /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num" }, /* @__PURE__ */ (0, import_react3.createElement)(SessionAmount, { costData, costFailed, sessionId })),
-    costData ? /* @__PURE__ */ (0, import_react3.createElement)(Popover, { open: openPop === "cost", body: /* @__PURE__ */ (0, import_react3.createElement)(CostPopoverBody, { data: costData }) }) : null
+    /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pulse" + (pulseKey === 0 ? " is-idle" : ""), key: pulseKey }, /* @__PURE__ */ (0, import_react3.createElement)(SessionAmount, { costData, costFailed, sessionId }))),
+    costData ? /* @__PURE__ */ (0, import_react3.createElement)(Popover, { body: /* @__PURE__ */ (0, import_react3.createElement)(CostPopoverBody, { data: costData }) }) : null
   ), /* @__PURE__ */ (0, import_react3.createElement)(
     "span",
     {
-      className: "billing-pill" + (openPop === "tide" ? " billing-pill-open" : ""),
-      onMouseEnter: () => showPop("tide"),
-      onFocus: () => showPop("tide"),
-      onBlur: hidePop,
+      className: "billing-pill",
       onClick: () => refreshAll(),
       tabIndex: 0,
       role: "button",
@@ -1061,7 +1041,7 @@ function BillingPills(props) {
     " \xB7",
     " ",
     /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num " + (tide.isPeak ? "billing-warn" : "billing-ok") }, fmtRemainShort(tide.nextChangeHours)),
-    /* @__PURE__ */ (0, import_react3.createElement)(Popover, { open: openPop === "tide", body: /* @__PURE__ */ (0, import_react3.createElement)(TidePopoverBody, { tide, tideRemain }) })
+    /* @__PURE__ */ (0, import_react3.createElement)(Popover, { body: /* @__PURE__ */ (0, import_react3.createElement)(TidePopoverBody, { tide, tideRemain }) })
   ));
 }
 function apply(ctx) {
@@ -1078,6 +1058,7 @@ var testHooks = {
   computeTide,
   hitRate,
   shortModel,
+  relTime,
   CostPopoverBody,
   BalancePopoverBody,
   TidePopoverBody

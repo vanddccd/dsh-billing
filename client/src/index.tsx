@@ -17,10 +17,8 @@ const TOKENS_FALLBACK_MS = 800
 /** 余额低于该值（人民币）时把余额数字标红。改这里即可调整阈值。 */
 const LOW_BALANCE_CNY = 5
 
-/** 浮层显示延迟：够短以致不觉得卡，够长以致鼠标划过不误弹。 */
-const POP_SHOW_DELAY_MS = 120
-/** 浮层隐藏延迟：够短以致不粘手，够长以致能在胶囊与浮层之间移动而不闪。 */
-const POP_HIDE_DELAY_MS = 90
+// 浮层的进出场时序**不在 JS 里** —— 由 pills.css 的 .billing-pop 纯 CSS 控制
+// （--dsb-tt-delay / --dsb-tt-in-dur / --dsb-tt-out-dur，配方见 transitions.dev 17-tooltip）。
 
 // ---- 样式注入（明暗模式用 DSH design token）----
 if (typeof document !== 'undefined') {
@@ -175,19 +173,17 @@ function useTide(sessionId: string | undefined) {
 
 // ---- 浮层（hover 明细）----
 
-type PopKey = 'balance' | 'cost' | 'tide'
-
 /**
- * 悬停/聚焦时展开的浮层容器。
+ * 悬停 / 键盘聚焦时展开的浮层。
  *
- * `billing-pop-slot` 是「桥接区」：它从胶囊底部一直延伸到浮层顶（padding-top 撑出视觉间隙），
- * 这样鼠标从胶囊移向浮层时不会经过非 hover 区，浮层就不会闪断。
+ * 显隐**完全由 CSS 驱动**（见 pills.css 的 `.billing-pop`，配方取自 transitions.dev
+ * 17-tooltip：进场带延迟 + fade/scale，离场立即、延迟归零），组件只负责把内容渲进 DOM。
+ * 因此数据未就绪时**不要**渲染它——否则 hover 会弹出一个空框。
  */
-function Popover({ open, body }: { open: boolean; body: any }) {
-  if (!open) return null
+function Popover({ body }: { body: any }) {
   return (
-    <span className="billing-pop-slot">
-      <span className="billing-pop" role="tooltip">
+    <span className="billing-pop">
+      <span className="billing-pop-card" role="tooltip">
         {body}
       </span>
     </span>
@@ -206,6 +202,21 @@ function shortModel(model: string): string {
   const bare = model.includes(':') ? model.slice(model.lastIndexOf(':') + 1) : model
   const short = bare.replace(/^deepseek-/, '').replace(/^v\d+(?:\.\d+)?-/, '')
   return short.length > 20 ? short.slice(0, 19) + '…' : short
+}
+
+/**
+ * 相对时间。绝对时间戳（14:03:47）看不出「新鲜度」——同一秒内连点两次刷新，
+ * 显示完全一样，用户无法判断到底刷没刷。改成相对描述后，点击刷新会立刻变成「刚刚」。
+ */
+function relTime(ts: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - ts) / 1000))
+  if (secs < 10) return '刚刚'
+  if (secs < 60) return `${secs} 秒前`
+  const mins = Math.round(secs / 60)
+  if (mins < 60) return `${mins} 分钟前`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours} 小时前`
+  return new Date(ts).toLocaleDateString()
 }
 
 /** 多模型占比条 + 内联图例。单模型时不渲染（恒为 100%，是噪声）。 */
@@ -271,7 +282,7 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
   const saved = data.cacheSaved ?? 0
   const subagents = data.subagentSessions ?? 0
   const failed = data.failedSessions ?? 0
-  const updated = typeof data.updatedAt === 'number' ? new Date(data.updatedAt).toLocaleTimeString() : null
+  const updated = typeof data.updatedAt === 'number' ? relTime(data.updatedAt) : null
   const source =
     data.pricingSource === 'online'
       ? `单价来源：官方在线同步${data.pricingSyncedAt ? `（${new Date(data.pricingSyncedAt).toLocaleString()}）` : ''}`
@@ -315,7 +326,7 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
           {subagents > 0 ? `含 ${subagents} 个子代理会话` : '仅本会话'}
           {failed > 0 ? ` · ⚠️ ${failed} 个日志读取失败` : ''}
         </span>
-        <span>{updated ? `${updated} 更新` : ''}</span>
+        <span>{updated ? `${updated}更新` : ''}</span>
       </span>
       <span className="billing-pop-source">{source}</span>
     </>
@@ -399,37 +410,12 @@ function BillingPills(props: any) {
   const costEpochRef = useRef(0)
   const balEpochRef = useRef(0)
 
-  // ---- 浮层开关（带延迟，避免划过误弹 / 移向浮层时闪断）----
-  const [openPop, setOpenPop] = useState<PopKey | null>(null)
-  const showTimer = useRef<number | null>(null)
-  const hideTimer = useRef<number | null>(null)
-
-  const clearTimers = useCallback(() => {
-    if (showTimer.current !== null) {
-      window.clearTimeout(showTimer.current)
-      showTimer.current = null
-    }
-    if (hideTimer.current !== null) {
-      window.clearTimeout(hideTimer.current)
-      hideTimer.current = null
-    }
-  }, [])
-
-  const showPop = useCallback(
-    (key: PopKey) => {
-      clearTimers()
-      showTimer.current = window.setTimeout(() => setOpenPop(key), POP_SHOW_DELAY_MS)
-    },
-    [clearTimers],
-  )
-
-  const hidePop = useCallback(() => {
-    clearTimers()
-    hideTimer.current = window.setTimeout(() => setOpenPop(null), POP_HIDE_DELAY_MS)
-  }, [clearTimers])
-
-  // 卸载时清掉挂起的定时器，避免对已卸载组件 setState。
-  useEffect(() => clearTimers, [clearTimers])
+  // ---- 点击刷新的反馈状态 ----
+  // refreshing：请求进行中（数字区降透明度）。
+  // pulseKey：每次刷新**结束后**自增，配合 React key 让数字区重新挂载、重播一次 pop。
+  //   即使值没变（NumberFlow 不滚动）也能给出「已刷新」的确认——这正是原先缺的一环。
+  const [refreshing, setRefreshing] = useState(false)
+  const [pulseKey, setPulseKey] = useState(0)
 
   const refreshCost = useCallback(async () => {
     if (!sessionId) return
@@ -456,9 +442,16 @@ function BillingPills(props: any) {
     }
   }, [])
 
-  const refreshAll = useCallback(() => {
-    refreshCost()
-    refreshBalance()
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      // refreshCost / refreshBalance 各自内部吞掉错误，这里不会 reject；
+      // 仍用 finally 保底，避免任何意外让 dim 状态永久挂着。
+      await Promise.all([refreshCost(), refreshBalance()])
+    } finally {
+      setRefreshing(false)
+      setPulseKey((k) => k + 1)
+    }
   }, [refreshCost, refreshBalance])
 
   // 挂载 / 切换会话：立即刷新
@@ -502,13 +495,10 @@ function BillingPills(props: any) {
   const aria = (label: string, detail: string) => `${label}。悬停查看明细，点击立即刷新。${detail}`
 
   return (
-    <span className="billing-pills" onMouseLeave={hidePop}>
+    <span className="billing-pills">
       {/* 余额 */}
       <span
-        className={'billing-pill' + (openPop === 'balance' ? ' billing-pill-open' : '')}
-        onMouseEnter={() => showPop('balance')}
-        onFocus={() => showPop('balance')}
-        onBlur={hidePop}
+        className={'billing-pill' + (refreshing ? ' is-refreshing' : '')}
         onClick={() => refreshAll()}
         tabIndex={0}
         role="button"
@@ -519,26 +509,25 @@ function BillingPills(props: any) {
           <b className="billing-num billing-warn">不可用</b>
         ) : (
           <b className={balClass}>
-            <span className="billing-money-slot">
-              <Rolling
-                value={cnyValue}
-                placeholder={balFailed ? '—' : '…'}
-                prefix="¥"
-                fractionDigits={2}
-                locales="zh-CN"
-              />
+            <span className={'billing-pulse' + (pulseKey === 0 ? ' is-idle' : '')} key={pulseKey}>
+              <span className="billing-money-slot">
+                <Rolling
+                  value={cnyValue}
+                  placeholder={balFailed ? '—' : '…'}
+                  prefix="¥"
+                  fractionDigits={2}
+                  locales="zh-CN"
+                />
+              </span>
             </span>
           </b>
         )}
-        <Popover open={openPop === 'balance'} body={<BalancePopoverBody balData={balData} cny={cny} usd={usd} />} />
+        {balData ? <Popover body={<BalancePopoverBody balData={balData} cny={cny} usd={usd} />} /> : null}
       </span>
 
       {/* 会话费用 */}
       <span
-        className={'billing-pill' + (openPop === 'cost' ? ' billing-pill-open' : '')}
-        onMouseEnter={() => showPop('cost')}
-        onFocus={() => showPop('cost')}
-        onBlur={hidePop}
+        className={'billing-pill' + (refreshing ? ' is-refreshing' : '')}
         onClick={() => refreshAll()}
         tabIndex={0}
         role="button"
@@ -547,19 +536,17 @@ function BillingPills(props: any) {
       >
         会话{' '}
         <b className="billing-num">
-          <SessionAmount costData={costData} costFailed={costFailed} sessionId={sessionId} />
+          {/* pulseKey 作 key：刷新结束后重新挂载一次 → 重播 pop，作为「已刷新」的确认信号 */}
+          <span className={'billing-pulse' + (pulseKey === 0 ? ' is-idle' : '')} key={pulseKey}>
+            <SessionAmount costData={costData} costFailed={costFailed} sessionId={sessionId} />
+          </span>
         </b>
-        {costData ? (
-          <Popover open={openPop === 'cost'} body={<CostPopoverBody data={costData} />} />
-        ) : null}
+        {costData ? <Popover body={<CostPopoverBody data={costData} />} /> : null}
       </span>
 
       {/* 峰谷时段 */}
       <span
-        className={'billing-pill' + (openPop === 'tide' ? ' billing-pill-open' : '')}
-        onMouseEnter={() => showPop('tide')}
-        onFocus={() => showPop('tide')}
-        onBlur={hidePop}
+        className="billing-pill"
         onClick={() => refreshAll()}
         tabIndex={0}
         role="button"
@@ -569,7 +556,7 @@ function BillingPills(props: any) {
         <b className={'billing-num ' + (tide.isPeak ? 'billing-warn' : 'billing-ok')}>
           {fmtRemainShort(tide.nextChangeHours)}
         </b>
-        <Popover open={openPop === 'tide'} body={<TidePopoverBody tide={tide} tideRemain={tideRemain} />} />
+        <Popover body={<TidePopoverBody tide={tide} tideRemain={tideRemain} />} />
       </span>
     </span>
   )
@@ -593,6 +580,7 @@ export const testHooks = {
   computeTide,
   hitRate,
   shortModel,
+  relTime,
   CostPopoverBody,
   BalancePopoverBody,
   TidePopoverBody,

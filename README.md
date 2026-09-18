@@ -24,6 +24,20 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 数字变化时逐位滚动（[NumberFlow](https://number-flow.barvian.me)，odometer 式：**只滚动值变化的位，未变的位静止**），含 `prefers-reduced-motion` 守卫（NumberFlow 内置 `respectMotionPreference`）。
 
+## 0.6.5：悬停浮层动效对齐 transitions.dev + 点击刷新的确认反馈
+
+0.6.4 的浮层是**条件渲染瞬间显隐**（零过渡），且点击刷新在数值未变时**毫无反馈**。本版补齐这两块：
+
+- **浮层改用 transitions.dev `17-tooltip` 配方**：删掉 JS 定时器与 `openPop` state，改由纯 CSS 的 `:hover` / `:focus-visible` 驱动 —— 进场 80ms 延迟 + 150ms fade/scale(0.98)，离场 50ms 立即（`transition-delay` 只写在 hover 规则里，离开时延迟归零，所以不粘手）。`.billing-pop` 是过渡与桥接的载体（`padding-top: 8px` 既是视觉间隙也是 hover 区域，指针从胶囊移向浮层不会闪断），看得见的卡片是内层 `.billing-pop-card`
+- **引入 transitions.dev 的 motion token**：统一加 `--dsb-` 前缀避免与宿主冲突（`--dsb-tt-*` / `--dsb-duration-quick` / `--dsb-pop-*`），替掉原先硬编码的 `120ms ease`
+- **点击刷新的确认反馈**（原先缺的一环）：
+  - 请求进行中：两颗真在取数的胶囊（余额 / 会话）数字区降到 40% 透明度
+  - 请求结束：数字区**重播一次极轻的 pop**（`translateY 3px + blur 2px + opacity`，260ms）。手法借 `02-number-pop-in`：React key 变化 → 重新挂载 → 动画重播，无需手动 reflow。**无论数值是否变化** —— 这正是「不知道刷没刷」的解药
+  - 首屏不白弹：`pulseKey === 0` 时挂 `.is-idle` 关掉动画
+- **浮层时间戳改相对时间**：「14:03:47 更新」→「刚刚更新」/「12 秒前更新」。绝对时间在同一秒内连点两次看不出差别，相对时间一刷新就变
+- **`prefers-reduced-motion`**：skill 每个片段都带的守卫全部保留（动效关闭时浮层仍正常显示，只是没有过渡）
+- 回归：`testHooks` 增出 `relTime`；浮层渲染测试 17 项、SSR 测试 4 项全绿
+
 ## 0.6.4：悬停明细改为自定义浮层（不再用原生 `title`）
 
 原生 `title` 的体验短板：延迟约 1 秒、纯文本、数字无法对齐、暗色模式下样式不可控、模型一多就糊成一块。本版把三个胶囊的悬停明细全部换成自定义浮层（暗底，沿用 DSH 的 `--dsw-alias-tooltip-bg`）：
