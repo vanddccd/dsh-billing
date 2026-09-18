@@ -36,6 +36,14 @@
     }
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanddccd/dsh-billing.git"
+  },
+  "homepage": "https://github.com/vanddccd/dsh-billing#readme",
+  "bugs": {
+    "url": "https://github.com/vanddccd/dsh-billing/issues"
+  },
   "dependencies": {
     "@number-flow/react": "^0.6.2"
   },

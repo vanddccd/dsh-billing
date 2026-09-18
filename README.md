@@ -180,7 +180,7 @@ dsh plugin --profile web add ./dsh-billing-0.6.8.tgz
 
 # 或从 npm / git 安装（发布后）
 dsh plugin --profile web add dsh-billing
-dsh plugin --profile web add github:you/dsh-billing
+dsh plugin --profile web add github:vanddccd/dsh-billing
 ```
 
 安装后**重启 `dsh web`**，再刷新浏览器页面（F5）使新 boot graph 生效。
