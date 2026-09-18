@@ -33,6 +33,8 @@ type CostModel = {
   inputTokens: number
   cacheReadTokens: number
   outputTokens: number
+  /** 该模型的请求次数（宿主 costPayload 上报）。 */
+  steps?: number
 }
 type CostData = {
   cost: number
@@ -40,6 +42,12 @@ type CostData = {
   models?: CostModel[]
   pricingSource?: string
   pricingSyncedAt?: string
+  /** 聚合进来的子代理会话数（不含本会话）。 */
+  subagentSessions?: number
+  /** 日志读取失败、未计入的会话数。 */
+  failedSessions?: number
+  /** 本次统计时刻，用于显示数据新鲜度。 */
+  updatedAt?: number
 } | null
 type BalInfo = { currency: string; totalBalance: string; toppedUpBalance: string; grantedBalance: string }
 type BalData = { isAvailable?: boolean; infos?: BalInfo[] } | null
@@ -241,20 +249,50 @@ function BillingPills(props: any) {
     if (usd) balTitle += `\n美元：总 $${usd.totalBalance}（充值 $${usd.toppedUpBalance}，赠金 $${usd.grantedBalance}）`
   }
 
+  // ---- 会话费用悬停明细 ----
+  // 一个会话内可能先后用到多个模型（如 flash 主力 + vision 读图），总额 = 各模型费用之和。
+  // 故这里**逐模型列出各自费用与占比**，再给出求和后的合计，让「A 模型 + B 模型」的动态累加一眼可见。
+  const modelRows = costData?.models ?? []
+  const subagentCount = costData?.subagentSessions ?? 0
+  const failedCount = costData?.failedSessions ?? 0
   let costTitle = '本会话 API 费用估算（官方单价）\n点击立即刷新'
-  if (costData && costData.models && costData.models.length > 0) {
+  if (costData && modelRows.length > 0) {
+    const multiModel = modelRows.length > 1
     const sourceLine =
       costData.pricingSource === 'online'
         ? `单价来源：官方在线同步${costData.pricingSyncedAt ? `（${new Date(costData.pricingSyncedAt).toLocaleString()}）` : ''}`
         : costData.pricingSource === 'builtin'
           ? '单价来源：内置默认（在线同步暂不可用，若官方改价可能失准）'
           : '单价来源：待宿主上报（若刚更新过插件，请重启 dsh web 后刷新页面）'
-    costTitle = `本会话 API 费用估算（官方单价）\n${costData.models
-      .map(
-        (m) =>
-          `${m.model}${m.priced ? '' : '（默认单价）'}：¥${fmtCost(m.cost)}（输入 ${m.inputTokens.toLocaleString()} + 缓存命中 ${m.cacheReadTokens.toLocaleString()} / 输出 ${m.outputTokens.toLocaleString()} tokens）`,
-      )
-      .join('\n')}\n合计 ¥${fmtCost(costData.cost)}\n${sourceLine}\n点击立即刷新`
+    const head = multiModel
+      ? `本会话 API 费用估算（官方单价，人民币）\n本会话使用了 ${modelRows.length} 个模型：`
+      : '本会话 API 费用估算（官方单价，人民币）'
+    const body = modelRows
+      .map((m) => {
+        // 占比只在多模型时有意义（单模型恒为 100%，是噪声）。
+        const share = multiModel && costData.cost > 0 ? `（占 ${((m.cost / costData.cost) * 100).toFixed(1)}%）` : ''
+        const steps = typeof m.steps === 'number' ? ` · ${m.steps} 次请求` : ''
+        return [
+          `${m.model}${m.priced ? '' : '（未配置单价，按兜底价估算）'}`,
+          `  费用 ¥${fmtCost(m.cost)}${share}${steps}`,
+          `  输入 ${m.inputTokens.toLocaleString()} + 缓存命中 ${m.cacheReadTokens.toLocaleString()} / 输出 ${m.outputTokens.toLocaleString()} tokens`,
+        ].join('\n')
+      })
+      .join('\n')
+    const totalLine = multiModel
+      ? `合计 ¥${fmtCost(costData.cost)}（${modelRows.length} 个模型求和）`
+      : `合计 ¥${fmtCost(costData.cost)}`
+    const lines = [head, '', body, '', totalLine]
+    if (subagentCount > 0) {
+      lines.push(`口径：本会话 + ${subagentCount} 个子代理会话（fork 继承事件已去重，不重复计费）`)
+    }
+    if (failedCount > 0) {
+      lines.push(`⚠️ 另有 ${failedCount} 个会话日志读取失败，未计入`)
+    }
+    lines.push(sourceLine)
+    const updatedAt = typeof costData.updatedAt === 'number' ? new Date(costData.updatedAt).toLocaleTimeString() : null
+    lines.push(`${updatedAt ? `数据更新于 ${updatedAt} · ` : ''}点击立即刷新`)
+    costTitle = lines.join('\n')
   }
 
   return (

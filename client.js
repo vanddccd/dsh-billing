@@ -939,16 +939,36 @@ ${tideSummary}`;
     if (usd) balTitle += `
 \u7F8E\u5143\uFF1A\u603B $${usd.totalBalance}\uFF08\u5145\u503C $${usd.toppedUpBalance}\uFF0C\u8D60\u91D1 $${usd.grantedBalance}\uFF09`;
   }
+  const modelRows = costData?.models ?? [];
+  const subagentCount = costData?.subagentSessions ?? 0;
+  const failedCount = costData?.failedSessions ?? 0;
   let costTitle = "\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF09\n\u70B9\u51FB\u7ACB\u5373\u5237\u65B0";
-  if (costData && costData.models && costData.models.length > 0) {
+  if (costData && modelRows.length > 0) {
+    const multiModel = modelRows.length > 1;
     const sourceLine = costData.pricingSource === "online" ? `\u5355\u4EF7\u6765\u6E90\uFF1A\u5B98\u65B9\u5728\u7EBF\u540C\u6B65${costData.pricingSyncedAt ? `\uFF08${new Date(costData.pricingSyncedAt).toLocaleString()}\uFF09` : ""}` : costData.pricingSource === "builtin" ? "\u5355\u4EF7\u6765\u6E90\uFF1A\u5185\u7F6E\u9ED8\u8BA4\uFF08\u5728\u7EBF\u540C\u6B65\u6682\u4E0D\u53EF\u7528\uFF0C\u82E5\u5B98\u65B9\u6539\u4EF7\u53EF\u80FD\u5931\u51C6\uFF09" : "\u5355\u4EF7\u6765\u6E90\uFF1A\u5F85\u5BBF\u4E3B\u4E0A\u62A5\uFF08\u82E5\u521A\u66F4\u65B0\u8FC7\u63D2\u4EF6\uFF0C\u8BF7\u91CD\u542F dsh web \u540E\u5237\u65B0\u9875\u9762\uFF09";
-    costTitle = `\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF09
-${costData.models.map(
-      (m2) => `${m2.model}${m2.priced ? "" : "\uFF08\u9ED8\u8BA4\u5355\u4EF7\uFF09"}\uFF1A\xA5${fmtCost(m2.cost)}\uFF08\u8F93\u5165 ${m2.inputTokens.toLocaleString()} + \u7F13\u5B58\u547D\u4E2D ${m2.cacheReadTokens.toLocaleString()} / \u8F93\u51FA ${m2.outputTokens.toLocaleString()} tokens\uFF09`
-    ).join("\n")}
-\u5408\u8BA1 \xA5${fmtCost(costData.cost)}
-${sourceLine}
-\u70B9\u51FB\u7ACB\u5373\u5237\u65B0`;
+    const head = multiModel ? `\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF0C\u4EBA\u6C11\u5E01\uFF09
+\u672C\u4F1A\u8BDD\u4F7F\u7528\u4E86 ${modelRows.length} \u4E2A\u6A21\u578B\uFF1A` : "\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF0C\u4EBA\u6C11\u5E01\uFF09";
+    const body = modelRows.map((m2) => {
+      const share = multiModel && costData.cost > 0 ? `\uFF08\u5360 ${(m2.cost / costData.cost * 100).toFixed(1)}%\uFF09` : "";
+      const steps = typeof m2.steps === "number" ? ` \xB7 ${m2.steps} \u6B21\u8BF7\u6C42` : "";
+      return [
+        `${m2.model}${m2.priced ? "" : "\uFF08\u672A\u914D\u7F6E\u5355\u4EF7\uFF0C\u6309\u515C\u5E95\u4EF7\u4F30\u7B97\uFF09"}`,
+        `  \u8D39\u7528 \xA5${fmtCost(m2.cost)}${share}${steps}`,
+        `  \u8F93\u5165 ${m2.inputTokens.toLocaleString()} + \u7F13\u5B58\u547D\u4E2D ${m2.cacheReadTokens.toLocaleString()} / \u8F93\u51FA ${m2.outputTokens.toLocaleString()} tokens`
+      ].join("\n");
+    }).join("\n");
+    const totalLine = multiModel ? `\u5408\u8BA1 \xA5${fmtCost(costData.cost)}\uFF08${modelRows.length} \u4E2A\u6A21\u578B\u6C42\u548C\uFF09` : `\u5408\u8BA1 \xA5${fmtCost(costData.cost)}`;
+    const lines = [head, "", body, "", totalLine];
+    if (subagentCount > 0) {
+      lines.push(`\u53E3\u5F84\uFF1A\u672C\u4F1A\u8BDD + ${subagentCount} \u4E2A\u5B50\u4EE3\u7406\u4F1A\u8BDD\uFF08fork \u7EE7\u627F\u4E8B\u4EF6\u5DF2\u53BB\u91CD\uFF0C\u4E0D\u91CD\u590D\u8BA1\u8D39\uFF09`);
+    }
+    if (failedCount > 0) {
+      lines.push(`\u26A0\uFE0F \u53E6\u6709 ${failedCount} \u4E2A\u4F1A\u8BDD\u65E5\u5FD7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u8BA1\u5165`);
+    }
+    lines.push(sourceLine);
+    const updatedAt = typeof costData.updatedAt === "number" ? new Date(costData.updatedAt).toLocaleTimeString() : null;
+    lines.push(`${updatedAt ? `\u6570\u636E\u66F4\u65B0\u4E8E ${updatedAt} \xB7 ` : ""}\u70B9\u51FB\u7ACB\u5373\u5237\u65B0`);
+    costTitle = lines.join("\n");
   }
   return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pills" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pill", title: balTitle, onClick: () => refreshAll() }, "\u4F59\u989D", " ", /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num" + (cny ? " billing-ok" : "") }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-money-slot" }, /* @__PURE__ */ (0, import_react3.createElement)(
     Rolling,

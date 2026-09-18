@@ -1,6 +1,6 @@
 {
   "name": "dsh-billing",
-  "version": "0.6.0",
+  "version": "0.6.3",
   "private": false,
   "type": "module",
   "description": "DeepSeek Harness plugin: 账户余额 + 会话费用（命令/工具 + Web UI 悬浮显示）",
