@@ -38,5 +38,13 @@
   "license": "MIT",
   "dependencies": {
     "@number-flow/react": "^0.6.2"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   }
 }
