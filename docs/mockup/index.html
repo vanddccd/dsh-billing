@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-billing · 会话费用悬停明细 · 三方向验收</title>
+<style>
+  :root {
+    --bg:#fff; --fg:#0f1115; --fg2:#61666b; --fg3:#81858c; --cap:#adb2b8;
+    --rule:rgba(0,0,0,.1); --card:#fff;
+  }
+  body[data-ds-dark-theme] {
+    --bg:#151517; --fg:#f9fafb; --fg2:#cfd3d6; --fg3:#adb3b8; --cap:#81858c;
+    --rule:rgba(255,255,255,.12); --card:#232324;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    font:400 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1240px; margin:0 auto; padding:48px 24px 80px; }
+  h1 { font-size:23px; font-weight:600; letter-spacing:-.02em; margin:0 0 10px; }
+  .intro { color:var(--fg2); font-size:14px; max-width:74ch; text-wrap:pretty; margin:0 0 8px; }
+  .intro b { color:var(--fg); font-weight:600; }
+  .facts {
+    display:flex; flex-wrap:wrap; gap:8px; margin:18px 0 8px;
+  }
+  .fact {
+    font-size:12px; color:var(--fg2); font-variant-numeric:tabular-nums;
+    border:1px solid var(--rule); border-radius:6px; padding:4px 9px;
+  }
+  .fact b { color:var(--fg); font-weight:600; }
+  .toggle {
+    position:fixed; top:18px; right:18px; z-index:9;
+    font:inherit; font-size:12px; color:var(--fg2);
+    background:var(--card); border:1px solid var(--rule); border-radius:7px;
+    padding:7px 13px; cursor:pointer;
+  }
+  .toggle:hover { color:var(--fg); }
+
+  .dir { margin-top:64px; }
+  .dir-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+  .tag {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:6px;
+    background:var(--fg); color:var(--bg);
+    font-size:12px; font-weight:700;
+  }
+  .dir h2 { font-size:17px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  .open { margin-left:auto; font-size:12px; color:var(--fg3); text-decoration:none; border-bottom:1px solid var(--rule); }
+  .open:hover { color:var(--fg); }
+  .desc { color:var(--fg2); font-size:13px; max-width:80ch; margin:0 0 16px; text-wrap:pretty; }
+  .desc b { color:var(--fg); font-weight:600; }
+  .frame { border:1px solid var(--rule); border-radius:12px; overflow:hidden; background:var(--card); }
+  .frame iframe { display:block; width:100%; border:0; }
+  .pick { color:var(--fg3); font-size:12px; margin:10px 0 0; }
+</style>
+</head>
+<body>
+<button class="toggle" onclick="document.body.toggleAttribute('data-ds-dark-theme')">切换明 / 暗</button>
+<div class="wrap">
+  <h1>会话费用悬停明细 · 三个方向</h1>
+  <p class="intro">
+    同一个数据源、同一套 DSH design token，三种信息组织方式。<b>请挑一个方向</b>，
+    我再按它落到 <code>client/src/index.tsx</code>。
+  </p>
+  <div class="facts">
+    <span class="fact">真实会话：<b>2 个模型</b></span>
+    <span class="fact">deepseek-flash <b>11 次</b> · 命中 <b>92.5%</b></span>
+    <span class="fact">flash-vision-exp <b>4 次</b> · 命中 <b>82.8%</b></span>
+    <span class="fact">合计 <b>¥0.378</b> / 538,166 tokens</span>
+    <span class="fact">含 <b>3 个</b>子代理会话</span>
+  </div>
+  <p class="pick">三个页面各自右上角都有「切换明 / 暗」按钮；下面 iframe 若加载不出来，点标题右侧「单独打开」。</p>
+
+  <section class="dir">
+    <div class="dir-head">
+      <span class="tag">A</span>
+      <h2>原生质感浮层</h2>
+      <a class="open" href="A-native-popover.html" target="_blank">单独打开 ↗</a>
+    </div>
+    <p class="desc">
+      完全沿用 DSH 自己的 tooltip 语言：暗底、小圆角、无边框、无阴影、无图标，信息只靠<b>间距和字重</b>分层。
+      改动最小、和现有界面最无冲突；代价是没有视觉抓手，模型多了会变成一列灰字。
+    </p>
+    <div class="frame"><iframe src="A-native-popover.html" height="640" title="方向 A 原生质感浮层"></iframe></div>
+  </section>
+
+  <section class="dir">
+    <div class="dir-head">
+      <span class="tag">B</span>
+      <h2>账单单据</h2>
+      <a class="open" href="B-ledger-sheet.html" target="_blank">单独打开 ↗</a>
+    </div>
+    <p class="desc">
+      当成一张<b>真正的账单</b>：固定列定义 + 等宽数字，模型 / 命中率 / 请求数 / 费用四列严格对齐。
+      信息密度最高、可横向比模型，<b>命中率升格为独立一列</b>；代价是少了点人情味，不像「提示」像「报表」。
+    </p>
+    <div class="frame"><iframe src="B-ledger-sheet.html" height="700" title="方向 B 账单单据"></iframe></div>
+  </section>
+
+  <section class="dir">
+    <div class="dir-head">
+      <span class="tag">C</span>
+      <h2>仪表盘卡片</h2>
+      <a class="open" href="C-dashboard-card.html" target="_blank">单独打开 ↗</a>
+    </div>
+    <p class="desc">
+      回答一个比「花了多少」更值钱的问题：<b>缓存替你省了多少</b>。flash 命中与未命中差 50 倍（¥0.02 vs ¥1.0），
+      所以把命中率做成有刻度的指标，并换算出「未命中则需 ¥1.74」；代价是「节省」是推算值，不是账单值。
+    </p>
+    <div class="frame"><iframe src="C-dashboard-card.html" height="780" title="方向 C 仪表盘卡片"></iframe></div>
+  </section>
+</div>
+</body>
+</html>

@@ -14,6 +14,7 @@ ESBUILD="${1:-/Users/van/dev/deepseek-harness/node_modules/.bin/esbuild}"
   --external:react \
   --jsx=transform \
   --jsx-factory=h \
+  --jsx-fragment=Fragment \
   --loader:.css=text \
   --outfile="$PLUGIN_DIR/client.js" \
   --banner:js="function makeFactory(require){var module={exports:{}},exports=module.exports;" \

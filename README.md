@@ -7,7 +7,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 | 入口 | 用法 | 说明 |
 | --- | --- | --- |
 | UI 会话头部三胶囊 | 无需操作，常驻显示 | **余额 + 本会话费用 + 峰谷时段** 并排显示在会话标题旁；点击任一胶囊立即刷新两个 |
-| 悬停明细 | 鼠标悬停 | 余额胶囊：充值/赠金/美元；费用胶囊：按模型的 token 与费用拆分 |
+| 悬停明细 | 鼠标悬停 / 键盘聚焦 | **自定义浮层**（不再用原生 `title`）：余额（充值/赠金/美元）、会话费用（分模型拆分 + 占比条 + 缓存命中率 + 缓存节省）、峰谷规则原文 |
 | 斜杠命令 `/balance` | 聊天框输入 `/balance` | 查询账户余额（人民币优先，附美元） |
 | 斜杠命令 `/cost` | 聊天框输入 `/cost` | 当前会话费用明细 |
 | 工具 `deepseek_billing` | 直接问模型"余额多少/花了多少钱" | query = `balance` / `cost` / `both` |
@@ -23,6 +23,21 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 - **峰谷时段**：当前高峰/低谷 + 距下次切换的剩余时间
 
 数字变化时逐位滚动（[NumberFlow](https://number-flow.barvian.me)，odometer 式：**只滚动值变化的位，未变的位静止**），含 `prefers-reduced-motion` 守卫（NumberFlow 内置 `respectMotionPreference`）。
+
+## 0.6.4：悬停明细改为自定义浮层（不再用原生 `title`）
+
+原生 `title` 的体验短板：延迟约 1 秒、纯文本、数字无法对齐、暗色模式下样式不可控、模型一多就糊成一块。本版把三个胶囊的悬停明细全部换成自定义浮层（暗底，沿用 DSH 的 `--dsw-alias-tooltip-bg`）：
+
+- **会话费用浮层**：分模型拆分（模型名 + 金额 + 请求次数 + 缓存命中率）；多于 1 个模型时给 3px 占比条与内联图例；底部给出「缓存节省」与「未命中则需」的对照价——让「一个会话里 A 模型 + B 模型」的动态累加一眼可见
+- **缓存节省是推算值**：`命中 token 数 ×（未命中价 − 命中价）`，由宿主算好随 `costPayload.cacheSaved` 下发。客户端只有金额与 token 数、没有单价，**算不出来**，故必须宿主提供。口径假设这些 token 若未命中会按未命中价计费，**不是账单值**
+- **余额浮层**：人民币 / 美元的总额、充值、赠金；接口报 `is_available=false` 时直接标注「当前不可用」
+- **峰谷浮层**：当前时段、距切换时长、官方规则原文
+- **胶囊本体状态色**：改用官方 state token（`--dsw-alias-state-success-primary` / `state-warn-label` / `state-error-primary`），取代旧版硬编码的 `#43b97f` / `#e08a3e`——那两个色既不随主题切换，也偏离官方语义。余额低于阈值（`LOW_BALANCE_CNY`，默认 ¥5）标红
+- **可访问性**：移除 `title` 后补 `aria-label`，并支持键盘聚焦展开浮层
+- **构建**：`scripts/build.sh` 补 `--jsx-fragment=Fragment`（浮层用到 Fragment，缺它会编译成不在作用域的 `React.Fragment`）
+- **回归**：`scripts/verify-pricing.mjs` 新增 H 段（缓存节省口径 3 项断言），共 51 项
+- **设计稿**：`docs/mockup/`（A/B/C 三方向 + 选定的 D 版「克制版仪表盘」）
+- **刷新策略如实化**：旧注释写的「轮次中每完成 10 步刷新一次」与实现不符——新版会话快照只暴露 `running`、不暴露 turn/step，这条能力拿不到，已从代码注释中移除（README 本就未记载）
 
 ## 0.6.2：会话费用聚合子代理（含去重）
 
@@ -58,7 +73,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 - **兜底价钉死**：仍为 pro 最高价 `0.15 / 4.5 / 13.5`，且**不再复用 pro 系列价目**——否则 9-14 会跟着降到 flash 价，把「未知模型」往低估方向带
 - **峰谷判定改为分钟粒度**：窗口端点 12:00 / 18:00 是闭区间起点，旧的「只比小时」实现与新的分钟实现在**当前整点窗口下结果等价**（严谨性提升，为将来分钟级窗口预留）
 - **客户端不再自己编时段口径**：峰谷窗口改由宿主 `/billing/tide` 下发（含 `weekendOffPeak`、时区偏移），客户端随分钟自算翻转；宿主判定权与客户端展示口径同源，杜绝两边漂移
-- **新增 `scripts/verify-pricing.mjs`**：48 项断言（解析器 / 内置价表 / 峰谷边界 / 同步幂等不回溯 / tide 载荷 / 真实会话回归 / 跨会话聚合去重），改价或改代码后一条命令回归
+- **新增 `scripts/verify-pricing.mjs`**：51 项断言（解析器 / 内置价表 / 峰谷边界 / 同步幂等不回溯 / tide 载荷 / 真实会话回归 / 缓存节省口径 / 跨会话聚合去重），改价或改代码后一条命令回归
 
 ## 0.5.0：定价对齐官方最新价（2026-09-09 校准）
 
@@ -84,7 +99,7 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 - `host.js` — 宿主插件：命令 + 工具 + `/billing/{balance,cost,tide}` RPC 通道（供浏览器胶囊读取）
 - `client.js` — 浏览器 bundle（**构建产物**，`__ModuleLoader__` 工厂格式，仅依赖平台共享的 react；NumberFlow 已内联）
-- `client/src/` — 客户端源码（`index.tsx` 主组件 / `rolling.tsx` NumberFlow 封装 / `format.ts` 金额位数 / `tide.ts` 峰谷兜底自算 / `pills.css`）
+- `client/src/` — 客户端源码（`index.tsx` 主组件 + 三个浮层：会话费用 / 余额 / 峰谷 / `rolling.tsx` NumberFlow 封装 / `format.ts` 金额位数 / `tide.ts` 峰谷兜底自算 / `pills.css` 胶囊与浮层样式）
 - `scripts/build.sh` — 构建脚本：esbuild 打包 `client/src/index.tsx` → `client.js`
   - `conversation.session.header.actions` 槽位（负数 order = 静态会话上下文）→ 余额 + 会话费用 + 峰谷时段三胶囊
 - `scripts/verify-pricing.mjs` — 定价回归脚本（`node scripts/verify-pricing.mjs`），官方页在线抓取，失败回退本地缓存

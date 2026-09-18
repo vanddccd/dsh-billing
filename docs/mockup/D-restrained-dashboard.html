@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-billing UI · 方向 D 克制版仪表盘（A+C 结合）</title>
+<style>
+  /* ── DSH design token（逐字抄自 packages/client/ui-theme/src/styles/design-platform.css）── */
+  :root {
+    --bg-base:#fff; --label-primary:#0f1115; --label-secondary:#61666b;
+    --label-tertiary:#81858c; --label-caption:#adb2b8;
+    --surface:#fff; --rule:rgba(0,0,0,.1); --hover:#2631480f; --track:rgba(0,0,0,.07);
+    --ok:#22c55e; --warn-label:#dd8629; --err:#ec1313;
+
+    /* 浮层恒为暗底（沿用 DSH tooltip 语言），故层内颜色不随明暗主题变化 */
+    --tt-bg:#2c2c2e; --tt-fg:#f9fafb; --tt-dim:#cfd3d6; --tt-faint:#8b8d92;
+    --tt-rule:rgba(255,255,255,.13); --tt-track:rgba(255,255,255,.13);
+    --tt-seg1:#5686fe; --tt-seg2:rgba(255,255,255,.24);   /* deepseek-450 + 中性 */
+    --tt-ok:#3ddc84;
+  }
+  body[data-ds-dark-theme] {
+    --bg-base:#151517; --label-primary:#f9fafb; --label-secondary:#cfd3d6;
+    --label-tertiary:#adb2b8; --label-caption:#81858c;
+    --surface:#232324; --rule:rgba(255,255,255,.12); --hover:#ffffff14; --track:rgba(255,255,255,.09);
+    --ok:#22c55e; --warn-label:#f59e0b; --err:#f25a5a;
+    --tt-bg:#43454a; --tt-fg:#f9fafb; --tt-dim:#cfd3d6; --tt-faint:#a8abb0;
+    --tt-rule:rgba(255,255,255,.15); --tt-track:rgba(255,255,255,.15);
+    --tt-seg1:#7ba4ff; --tt-seg2:rgba(255,255,255,.26);
+    --tt-ok:#4ee08e;
+  }
+
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    background:var(--bg-base); color:var(--label-primary);
+    font:400 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing:antialiased; padding:40px 48px 64px; transition:background .2s ease;
+  }
+  .num { font-variant-numeric:tabular-nums; }
+
+  .page-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px; }
+  .dir-tag { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--label-caption); font-weight:600; }
+  h1 { font-size:19px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  .lede { color:var(--label-secondary); font-size:13px; max-width:66ch; text-wrap:pretty; margin:0 0 30px; }
+  .toggle {
+    margin-left:auto; font:inherit; font-size:12px; color:var(--label-secondary);
+    background:transparent; border:1px solid var(--rule); border-radius:6px; padding:5px 11px; cursor:pointer;
+  }
+  .toggle:hover { background:var(--hover); color:var(--label-primary); }
+
+  /* ── 模拟 DSH 会话头部 ── */
+  .dsh-bar {
+    display:flex; align-items:center; gap:10px;
+    border:1px solid var(--rule); border-radius:10px 10px 0 0; border-bottom:0;
+    padding:9px 14px; background:var(--surface);
+  }
+  .sess-title { font-size:13px; font-weight:500; }
+  .pills { display:inline-flex; align-items:center; gap:2px; margin-left:2px; }
+  .pill {
+    display:inline-flex; align-items:center; gap:3px;
+    min-height:28px; padding:3px 8px; border-radius:6px;
+    color:var(--label-secondary); font-size:12px; line-height:18px; white-space:nowrap;
+    cursor:pointer; transition:background 120ms ease, color 120ms ease;
+  }
+  .pill:hover, .pill.is-open { background:var(--hover); color:var(--label-primary); }
+  .pill b { font-weight:600; font-variant-numeric:tabular-nums; }
+  .v-ok { color:var(--ok); } .v-warn { color:var(--warn-label); } .v-low { color:var(--err); }
+
+  /* ── 浮层：A 的骨架（暗底 / 无边框 / 无阴影 / 无图标）── */
+  .anchor { position:relative; }
+  .pop {
+    position:absolute; top:calc(100% + 8px); left:-8px; z-index:5;
+    width:322px; padding:12px 14px 11px;
+    background:var(--tt-bg); color:var(--tt-fg); border-radius:8px;
+    font-size:12px; line-height:1.55;
+  }
+  .pop-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+  .pop-head .lbl { color:var(--tt-faint); font-size:11px; }
+  .pop-head .amt { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.015em; }
+  .pop-head .tk { color:var(--tt-faint); font-size:11px; font-variant-numeric:tabular-nums; margin-left:7px; }
+
+  /* 占比：C 的那条堆叠条，但压到 3px、无圆角、无容器 */
+  .share { display:flex; height:3px; margin:11px 0 7px; gap:2px; }
+  .share i { display:block; height:100%; }
+  .share .s1 { width:79.1%; background:var(--tt-seg1); }
+  .share .s2 { width:20.9%; background:var(--tt-seg2); }
+  .lg { display:flex; gap:14px; color:var(--tt-faint); font-size:11px; font-variant-numeric:tabular-nums; }
+  .lg span { display:inline-flex; align-items:baseline; gap:5px; }
+  .lg i { width:6px; height:6px; border-radius:1px; display:inline-block; }
+  .lg .d1 { background:var(--tt-seg1); } .lg .d2 { background:var(--tt-seg2); }
+
+  .rule { height:1px; background:var(--tt-rule); margin:11px 0; }
+
+  .mrow { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+  .mrow .nm { color:var(--tt-fg); }
+  .mrow .am { font-weight:600; font-variant-numeric:tabular-nums; }
+  .msub { color:var(--tt-faint); font-size:11px; margin:2px 0 9px; font-variant-numeric:tabular-nums; }
+  .msub:last-of-type { margin-bottom:0; }
+  /* 命中率用「颜色」承载，不用刻度条 —— 暗底上再插一条绿条会吵 */
+  .hit { color:var(--tt-ok); }
+
+  .save { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .save .lbl { color:var(--tt-dim); font-size:11px; }
+  .save .val { color:var(--tt-ok); font-weight:600; font-variant-numeric:tabular-nums; }
+  .save .sub { color:var(--tt-faint); font-size:11px; font-variant-numeric:tabular-nums; }
+
+  .pop-foot { display:flex; align-items:baseline; justify-content:space-between; gap:10px; color:var(--tt-faint); font-size:11px; margin-top:10px; }
+
+  .notes { display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); gap:20px; margin-top:330px; }
+  .note h3 { font-size:12px; margin:0 0 6px; font-weight:600; }
+  .note p, .note li { font-size:12px; color:var(--label-secondary); margin:0; text-wrap:pretty; }
+  .note ul { margin:0; padding-left:15px; } .note li { margin-bottom:3px; }
+  .k { color:var(--label-primary); font-weight:500; }
+
+  /* ── 胶囊状态演示（连带修掉硬编码色）── */
+  .states { margin-top:52px; border-top:1px solid var(--rule); padding-top:26px; }
+  .states h2 { font-size:15px; font-weight:600; margin:0 0 4px; }
+  .states .sub { color:var(--label-secondary); font-size:12px; margin:0 0 20px; max-width:70ch; text-wrap:pretty; }
+  .state-row { display:flex; align-items:center; gap:14px; padding:9px 0; flex-wrap:wrap; }
+  .state-row + .state-row { border-top:1px solid var(--rule); }
+  .state-row .cap { color:var(--label-caption); font-size:11px; width:104px; flex:none; }
+  .state-row .why { color:var(--label-tertiary); font-size:11px; margin-left:6px; }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <span class="dir-tag">方向 D · A+C 结合</span>
+    <h1>克制版仪表盘</h1>
+    <button class="toggle" onclick="document.body.toggleAttribute('data-ds-dark-theme')">切换明 / 暗</button>
+  </div>
+  <p class="lede">
+    骨架是 A 的（暗底、无边框、无阴影、无图标，靠间距和字重分层），只从 C 借两样：
+    <b>一条 3px 的占比条</b>和<b>一句缓存节省</b>。命中率用颜色承载而不是刻度条 —— 暗底上再插一条绿条就吵了。
+    净结果是：比 A 多三条信息，没多一个装饰。
+  </p>
+
+  <div class="dsh-bar">
+    <span class="sess-title">继续 dsh-billing UI 改进</span>
+    <span class="pills">
+      <span class="pill">余额 <b class="num v-ok">¥4.91</b></span>
+      <span class="pill is-open anchor">会话 <b class="num">¥0.378(538,166)</b>
+        <span class="pop" style="display:block">
+          <div class="pop-head">
+            <span class="lbl">本会话费用 · 2 个模型</span>
+            <span><span class="amt">¥0.378</span><span class="tk">538,166 tk</span></span>
+          </div>
+
+          <div class="share"><i class="s1"></i><i class="s2"></i></div>
+          <div class="lg">
+            <span><i class="d1"></i>flash 79.1%</span>
+            <span><i class="d2"></i>vision 20.9%</span>
+          </div>
+
+          <div class="rule"></div>
+
+          <div class="mrow"><span class="nm">deepseek-flash</span><span class="am">¥0.299</span></div>
+          <div class="msub">11 次请求 · 缓存命中 <span class="hit">92.5%</span></div>
+
+          <div class="mrow"><span class="nm">deepseek-flash-vision-exp</span><span class="am">¥0.079</span></div>
+          <div class="msub">4 次请求 · 缓存命中 <span class="hit">82.8%</span></div>
+
+          <div class="rule"></div>
+
+          <div class="save">
+            <span class="lbl">缓存节省</span>
+            <span><span class="val">¥1.36</span><span class="sub">　未命中则需 ¥1.74</span></span>
+          </div>
+
+          <div class="pop-foot">
+            <span>含 3 个子代理会话</span>
+            <span>12:00 更新</span>
+          </div>
+        </span>
+      </span>
+      <span class="pill">低谷时段 · <b class="num v-ok">46.5h</b></span>
+    </span>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>从 A 继承</h3>
+      <ul>
+        <li>暗底浮层、无边框、无阴影、无图标</li>
+        <li>大金额作锚点，分模型行右对齐</li>
+        <li>脚注沉底：子代理数 · 数据新鲜度</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>从 C 只借两样</h3>
+      <ul>
+        <li><span class="k">3px 占比条</span>（无圆角、无容器、无图例框）</li>
+        <li><span class="k">缓存节省 ¥1.36</span> + 未命中对照价</li>
+        <li>命中率改用<span class="k">颜色</span>而非刻度条</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>刻意没做</h3>
+      <ul>
+        <li>C 的绿色色块背景（暗底上加色块很跳）</li>
+        <li>C 的每模型命中率刻度条（与占比条重复）</li>
+        <li>环形图、指针、任何装饰性图形</li>
+      </ul>
+    </div>
+  </div>
+
+  <section class="states">
+    <h2>胶囊本体状态（顺带修掉硬编码色）</h2>
+    <p class="sub">
+      现在 <code>pills.css</code> 把绿橙写死成 <code>#43b97f</code> / <code>#e08a3e</code>，
+      没有跟随 DSH 主题。改用官方 state token 后，「余额快见底」这件事才第一次能被看见。
+    </p>
+    <div class="state-row">
+      <span class="cap">正常</span>
+      <span class="pills">
+        <span class="pill">余额 <b class="num v-ok">¥4.91</b></span>
+        <span class="pill">会话 <b class="num">¥0.378(538,166)</b></span>
+        <span class="pill">低谷时段 · <b class="num v-ok">46.5h</b></span>
+      </span>
+      <span class="why">—</span>
+    </div>
+    <div class="state-row">
+      <span class="cap">低余额</span>
+      <span class="pills">
+        <span class="pill">余额 <b class="num v-low">¥3.12</b></span>
+        <span class="pill">会话 <b class="num">¥0.378(538,166)</b></span>
+        <span class="pill">低谷时段 · <b class="num v-ok">46.5h</b></span>
+      </span>
+      <span class="why">低于阈值标红（阈值可配，默认建议 ¥5）</span>
+    </div>
+    <div class="state-row">
+      <span class="cap">余额不可用</span>
+      <span class="pills">
+        <span class="pill">余额 <b class="num v-warn">不可用</b></span>
+        <span class="pill">会话 <b class="num">¥0.378(538,166)</b></span>
+        <span class="pill">高峰时段 · <b class="num v-warn">2.1h</b></span>
+      </span>
+      <span class="why">API 返回 is_available=false —— 现在这条只藏在 tooltip 里</span>
+    </div>
+    <div class="state-row">
+      <span class="cap">加载 / 失败</span>
+      <span class="pills">
+        <span class="pill">余额 <b class="num">…</b></span>
+        <span class="pill">会话 <b class="num">—</b></span>
+        <span class="pill">低谷时段 · <b class="num v-ok">46.5h</b></span>
+      </span>
+      <span class="why">… 为加载中，— 为失败（失败时整颗胶囊降透明度）</span>
+    </div>
+  </section>
+</body>
+</html>

@@ -1,15 +1,29 @@
+/* dsh-billing 胶囊与悬停浮层样式。
+   所有颜色取自 DSH design token（packages/client/ui-theme/src/styles/design-platform.css）：
+   - 胶囊本体随主题：--dsw-alias-*
+   - 浮层恒为暗底（沿用 DSH tooltip 语言）：--dsw-alias-tooltip-bg + --dsw-static-*
+   不再硬编码色值——旧版的 #43b97f / #e08a3e 既不跟随主题，也偏离官方 state 语义。 */
+
 .billing-pills { display: inline-flex; align-items: center; gap: 2px; }
 .billing-pill {
+  /* 浮层定位基准 */
+  position: relative;
   display: inline-flex; align-items: center; gap: 3px;
   min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;
   background: transparent; color: var(--dsw-alias-label-secondary);
   font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
-.billing-pill:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.billing-pill:hover,
+.billing-pill-open { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.billing-pill:focus-visible { outline: 2px solid var(--dsw-alias-label-caption); outline-offset: 1px; }
 .billing-num { font-weight: 600; font-variant-numeric: tabular-nums; }
-.billing-ok { color: #43b97f; }
-.billing-warn { color: #e08a3e; }
+
+/* 状态色 = 官方 state token（随明暗主题自动切换） */
+.billing-ok { color: var(--dsw-alias-state-success-primary); }
+.billing-warn { color: var(--dsw-alias-state-warn-label); }
+/* 低余额：低于 LOW_BALANCE_CNY（见 index.tsx）时标红 */
+.billing-low { color: var(--dsw-alias-state-error-primary); }
 
 /* NumberFlow 渲染为 <number-flow-react> 自定义元素，内部是 open shadow DOM：
    CSS 自定义属性与可继承属性（color / font-*）都能穿透，但 shadow 内 :host 设了
@@ -22,3 +36,95 @@
 /* tokens 槽：右对齐；tokens 单调增长，无需兜底宽度。 */
 .billing-tokens-slot { display: inline-flex; justify-content: flex-end; }
 .billing-amount { display: inline-flex; align-items: baseline; }
+
+/* ── 悬停浮层 ──
+   slot 是「桥接区」：从胶囊底部一直延伸到浮层顶（padding-top 撑出视觉上的 8px 间隙），
+   这样鼠标从胶囊移向浮层时不会经过非 hover 区域，浮层就不会闪断。 */
+.billing-pop-slot {
+  position: absolute; top: 100%; left: -8px; z-index: 40;
+  display: block; padding-top: 8px;
+}
+/* 最右那颗胶囊（峰谷）改为右对齐，避免浮层溢出视口右缘。 */
+.billing-pill:last-child .billing-pop-slot { left: auto; right: -8px; }
+
+.billing-pop {
+  display: block; width: 322px; padding: 12px 14px 11px;
+  background: var(--dsw-alias-tooltip-bg);
+  border-radius: 8px;
+  /* 轻阴影：真实页面里浮层会压在消息流上，暗底与深色内容相邻时需要一层分离 */
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);
+  font-size: 12px; line-height: 1.55; font-weight: 400;
+  text-align: left; white-space: normal;
+}
+
+.billing-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.billing-pop-label { color: var(--dsw-static-neutral-bluish-500); font-size: 11px; }
+.billing-pop-amt {
+  font-size: 18px; font-weight: 600; letter-spacing: -0.015em;
+  color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums;
+}
+.billing-pop-tk { margin-left: 7px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }
+.billing-pop-bad { font-size: 11px; color: var(--dsw-static-amber-400); }
+.billing-pop-warn { color: var(--dsw-static-amber-400); }
+.billing-pop-hit { color: var(--dsw-static-green-400); }
+
+/* 占比：3px 堆叠条，无圆角无容器；单模型时不渲染 */
+.billing-pop-share-wrap { display: block; margin-top: 11px; }
+.billing-pop-share { display: flex; height: 3px; gap: 2px; margin-bottom: 7px; }
+.billing-seg { display: block; height: 100%; }
+.billing-seg-0 { background: var(--dsw-static-deepseek-450); }
+.billing-seg-1 { background: rgba(255, 255, 255, 0.3); }
+.billing-seg-2 { background: rgba(255, 255, 255, 0.46); }
+.billing-seg-3 { background: rgba(255, 255, 255, 0.62); }
+.billing-pop-lg {
+  display: flex; flex-wrap: wrap; gap: 5px 14px;
+  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;
+}
+.billing-pop-lg > span { display: inline-flex; align-items: baseline; gap: 5px; }
+.billing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 1px; }
+
+.billing-pop-rule { display: block; height: 1px; background: rgba(255, 255, 255, 0.13); margin: 11px 0; }
+
+.billing-pop-model { display: block; }
+.billing-pop-mrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.billing-pop-mname {
+  color: var(--dsw-static-neutral-bluish-50);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.billing-pop-mamt { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }
+.billing-pop-msub {
+  display: block; margin: 2px 0 9px;
+  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;
+}
+.billing-pop-model:last-of-type .billing-pop-msub { margin-bottom: 0; }
+
+/* 缓存节省（推算值）：宿主算好下发——客户端没有单价，算不出来 */
+.billing-pop-save { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.billing-pop-save-lbl { font-size: 11px; color: var(--dsw-static-neutral-bluish-300); }
+.billing-pop-save-val { font-weight: 600; color: var(--dsw-static-green-400); font-variant-numeric: tabular-nums; }
+.billing-pop-save-sub { margin-left: 8px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }
+
+.billing-pop-foot {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-top: 10px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500);
+}
+.billing-pop-source { display: block; margin-top: 3px; font-size: 11px; color: var(--dsw-static-neutral-bluish-600); }
+.billing-pop-note { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-400); }
+
+/* 余额浮层 */
+.billing-pop-bal { display: block; margin-top: 9px; }
+.billing-pop-bal-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  color: var(--dsw-static-neutral-bluish-300);
+}
+.billing-pop-bal-total { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }
+.billing-pop-bal-sub { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }
+
+/* 峰谷浮层 */
+.billing-pop-tide-line { display: block; margin-top: 9px; color: var(--dsw-static-neutral-bluish-300); }
+.billing-pop-tide-rule { display: block; font-size: 11px; line-height: 1.6; color: var(--dsw-static-neutral-bluish-400); }
+
+/* 动效偏好：关掉胶囊的状态过渡（NumberFlow 自带 respectMotionPreference 守卫） */
+@media (prefers-reduced-motion: reduce) {
+  .billing-pill { transition: none; }
+}

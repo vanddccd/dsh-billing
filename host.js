@@ -553,7 +553,7 @@ export function summarize(usageSteps, config, nowMs) {
     const bareModel = model === '(unknown)' ? model : (model.includes(':') ? model.slice(model.lastIndexOf(':') + 1) : model)
     let agg = byModel.get(model)
     if (!agg) {
-      agg = { model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0, cost: 0, priced: false, matched: null }
+      agg = { model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0, cost: 0, savedCost: 0, priced: false, matched: null }
       byModel.set(model, agg)
     }
     const input = bucket.usage.inputTokens ?? 0
@@ -566,6 +566,10 @@ export function summarize(usageSteps, config, nowMs) {
     const resolved = resolvePricing(bareModel, config.pricing)
     const { rate } = rateAt(resolved?.entry ?? config.fallbackPrice, bucket.time ?? nowMs)
     agg.cost += (input * (rate.cacheMiss ?? 0) + cache * (rate.cacheHit ?? 0) + output * (rate.output ?? 0)) / 1e6
+    // 缓存命中省下的钱（**推算值**，非账单值）：命中 token 数 ×（未命中价 − 命中价）。
+    // 口径假设「这些 token 若未命中会按未命中价计费」；官方实际扣费以账单为准。
+    // 客户端拿不到单价，无法自行推算，故必须由宿主算好随 costPayload 下发。
+    agg.savedCost += (cache * Math.max(0, (rate.cacheMiss ?? 0) - (rate.cacheHit ?? 0))) / 1e6
     if (resolved) {
       agg.priced = true
       agg.matched = agg.matched ?? resolved.matched
@@ -592,9 +596,11 @@ export function formatCostText(usage, pricingCtx) {
     '',
   ]
   let total = 0
+  let saved = 0
   for (const row of rows) {
     const tokens = row.inputTokens + row.cacheReadTokens + row.outputTokens
     total += row.cost
+    saved += row.savedCost ?? 0
     lines.push(
       `• ${row.model}${row.priced ? '' : '（未配置单价，按 fallbackPrice 估算）'}`,
       `    输入 ${row.inputTokens.toLocaleString()} + 缓存命中 ${row.cacheReadTokens.toLocaleString()} / 输出 ${row.outputTokens.toLocaleString()} tokens（${row.steps} 次请求）`,
@@ -602,6 +608,11 @@ export function formatCostText(usage, pricingCtx) {
     )
   }
   lines.push('', `合计：¥${fmtMoney(total)}`)
+  if (saved > 0) {
+    lines.push(
+      `缓存命中省下约 ¥${fmtMoney(saved)}（推算值，非账单值：命中 token 数 × 未命中价与命中价之差；若这些 token 全部未命中，则需约 ¥${fmtMoney(total + saved)}）。`,
+    )
+  }
   lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价、周末全天空闲价；2026-09-10 12:00 起 flash 系列降价）。')
   if (sub > 0) {
     lines.push(`口径：本会话 + ${sub} 个子代理会话；子代理日志中 fork 继承的父会话事件已剔除，不重复计费。`)
@@ -766,6 +777,8 @@ export function apply(ctx, config) {
     return {
       cost: rows.reduce((sum, row) => sum + row.cost, 0),
       totalTokens: rows.reduce((sum, row) => sum + row.inputTokens + row.cacheReadTokens + row.outputTokens, 0),
+      // 缓存命中省下的金额（推算值）；「未命中则需」= cost + cacheSaved
+      cacheSaved: rows.reduce((sum, row) => sum + row.savedCost, 0),
       models: rows.map((row) => ({
         model: row.model,
         cost: row.cost,
@@ -773,6 +786,7 @@ export function apply(ctx, config) {
         cacheReadTokens: row.cacheReadTokens,
         outputTokens: row.outputTokens,
         steps: row.steps,
+        savedCost: row.savedCost,
         priced: row.priced,
       })),
       subagentSessions: Math.max(0, (usage?.sessions ?? 0) - 1),

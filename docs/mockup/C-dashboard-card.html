@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>dsh-billing UI · 方向 C 仪表盘卡片</title>
+<style>
+  /* ── DSH design token（逐字抄自 packages/client/ui-theme/src/styles/design-platform.css）── */
+  :root {
+    --bg-base:#fff; --label-primary:#0f1115; --label-secondary:#61666b;
+    --label-tertiary:#81858c; --label-caption:#adb2b8;
+    --surface:#fff; --layer3:#fff; --rule:rgba(0,0,0,.1);
+    --hover:#2631480f; --track:rgba(0,0,0,.07);
+    --ds-strong:#4176e6; --ds-soft:#b7c8fe;      /* deepseek-500 / deepseek-300 */
+    --ok:#22c55e; --ok-bg:#e6faed; --warn-label:#dd8629;
+  }
+  body[data-ds-dark-theme] {
+    --bg-base:#151517; --label-primary:#f9fafb; --label-secondary:#cfd3d6;
+    --label-tertiary:#adb2b8; --label-caption:#81858c;
+    --surface:#232324; --layer3:#2c2c2e; --rule:rgba(255,255,255,.12);
+    --hover:#ffffff14; --track:rgba(255,255,255,.09);
+    --ds-strong:#5686fe; --ds-soft:#2f4c8f;      /* deepseek-450 / deepseek-700 */
+    --ok:#22c55e; --ok-bg:#233c2c; --warn-label:#f59e0b;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin:0; }
+  body {
+    background: var(--bg-base); color: var(--label-primary);
+    font: 400 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 48px 64px;
+    transition: background .2s ease;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .page-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px; }
+  .dir-tag { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--label-caption); font-weight:600; }
+  h1 { font-size:19px; font-weight:600; margin:0; letter-spacing:-.01em; }
+  .lede { color:var(--label-secondary); font-size:13px; max-width:62ch; text-wrap:pretty; margin:0 0 30px; }
+  .toggle {
+    margin-left:auto; font:inherit; font-size:12px; color:var(--label-secondary);
+    background:transparent; border:1px solid var(--rule); border-radius:6px; padding:5px 11px; cursor:pointer;
+  }
+  .toggle:hover { background:var(--hover); color:var(--label-primary); }
+
+  .dsh-bar {
+    display:flex; align-items:center; gap:10px;
+    border:1px solid var(--rule); border-radius:10px 10px 0 0; border-bottom:0;
+    padding:9px 14px; background:var(--surface);
+  }
+  .sess-title { font-size:13px; font-weight:500; }
+  .pills { display:inline-flex; align-items:center; gap:2px; margin-left:2px; }
+  .pill {
+    display:inline-flex; align-items:center; gap:3px;
+    min-height:28px; padding:3px 8px; border-radius:6px;
+    color:var(--label-secondary); font-size:12px; line-height:18px; white-space:nowrap;
+    cursor:pointer; transition:background 120ms ease, color 120ms ease;
+  }
+  .pill:hover, .pill.is-open { background:var(--hover); color:var(--label-primary); }
+  .pill b { font-weight:600; font-variant-numeric:tabular-nums; }
+  .v-ok { color:var(--ok); } .v-warn { color:var(--warn-label); }
+
+  /* ── 仪表盘卡片 ── */
+  .anchor { position:relative; }
+  .card {
+    position:absolute; top:calc(100% + 8px); left:-8px; z-index:5;
+    width:352px; padding:14px 16px 13px;
+    background:var(--layer3); border:1px solid var(--rule); border-radius:10px;
+    box-shadow:0 10px 28px -8px rgba(0,0,0,.2);
+    font-size:12px;
+  }
+  body[data-ds-dark-theme] .card { box-shadow:0 12px 32px -8px rgba(0,0,0,.55); }
+
+  .card-head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px; }
+  .card-label { font-size:11px; color:var(--label-caption); }
+  .card-amt { font-size:21px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+  .card-amt small { font-size:11px; font-weight:400; color:var(--label-caption); margin-left:6px; letter-spacing:0; }
+
+  /* 模型占比堆叠条 */
+  .stack { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--track); gap:1px; }
+  .stack i { display:block; height:100%; }
+  .stack .s1 { width:79.1%; background:var(--ds-strong); }
+  .stack .s2 { width:20.9%; background:var(--ds-soft); }
+  .legend { display:flex; gap:14px; margin:8px 0 14px; color:var(--label-secondary); font-size:11px; }
+  .legend span { display:inline-flex; align-items:center; gap:5px; }
+  .dot { width:7px; height:7px; border-radius:2px; display:inline-block; }
+  .dot.d1 { background:var(--ds-strong); } .dot.d2 { background:var(--ds-soft); }
+
+  /* 分模型行 + 命中率条 */
+  .m { display:grid; grid-template-columns:1fr auto; align-items:baseline; gap:10px; padding:7px 0; }
+  .m + .m { border-top:1px solid var(--rule); }
+  .m-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--label-primary); }
+  .m-amt { font-weight:600; font-variant-numeric:tabular-nums; }
+  .m-sub { display:flex; align-items:center; gap:7px; margin-top:5px; color:var(--label-tertiary); font-size:11px; font-variant-numeric:tabular-nums; }
+  .hitbar { flex:1; height:3px; border-radius:2px; background:var(--track); overflow:hidden; max-width:96px; }
+  .hitbar i { display:block; height:100%; background:var(--ok); }
+  .hit-num { color:var(--ok); font-weight:600; }
+
+  /* 缓存节省 — 这个方向的核心 */
+  .save {
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    margin-top:12px; padding:9px 11px; border-radius:7px;
+    background:var(--ok-bg);
+  }
+  .save .lbl { font-size:11px; color:var(--label-secondary); }
+  .save .val { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; color:var(--ok); }
+  .save .sub { font-size:11px; color:var(--label-tertiary); font-variant-numeric:tabular-nums; }
+
+  .card-foot {
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    margin-top:11px; color:var(--label-caption); font-size:11px;
+  }
+
+  /* 浮层是绝对定位，会伸到 bar 下方；这里留出它占的高度，避免遮住说明区 */
+  .notes { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:20px; margin-top:356px; }
+  .note h3 { font-size:12px; margin:0 0 6px; font-weight:600; }
+  .note p, .note li { font-size:12px; color:var(--label-secondary); margin:0; text-wrap:pretty; }
+  .note ul { margin:0; padding-left:15px; } .note li { margin-bottom:3px; }
+  .k { color:var(--label-primary); font-weight:500; }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <span class="dir-tag">方向 C</span>
+    <h1>仪表盘卡片</h1>
+    <button class="toggle" onclick="document.body.toggleAttribute('data-ds-dark-theme')">切换明 / 暗</button>
+  </div>
+  <p class="lede">
+    这个方向回答一个比「花了多少」更值钱的问题：<b>缓存替你省了多少</b>。
+    flash 缓存命中与未命中差 <b>50 倍</b>（¥0.02 vs ¥1.0），命中率掉下来就是真金白银，
+    所以把它从灰色小字升格成有刻度的指标 + 一句换算。
+  </p>
+
+  <div class="dsh-bar">
+    <span class="sess-title">继续 dsh-billing UI 改进</span>
+    <span class="pills">
+      <span class="pill">余额 <b class="num v-ok">¥4.91</b></span>
+      <span class="pill is-open anchor">会话 <b class="num">¥0.378(538,166)</b>
+        <span class="card" style="display:block">
+          <div class="card-head">
+            <span class="card-label">本会话费用 · 2 个模型</span>
+            <span class="card-amt">¥0.378<small>538,166 tk</small></span>
+          </div>
+
+          <div class="stack"><i class="s1"></i><i class="s2"></i></div>
+          <div class="legend">
+            <span><i class="dot d1"></i>flash 79.1%</span>
+            <span><i class="dot d2"></i>vision 20.9%</span>
+          </div>
+
+          <div class="m">
+            <div>
+              <div class="m-name">deepseek-flash</div>
+              <div class="m-sub">
+                <span class="hitbar"><i style="width:92.5%"></i></span>
+                <span class="hit-num">92.5%</span><span>命中 · 11 次</span>
+              </div>
+            </div>
+            <span class="m-amt">¥0.299</span>
+          </div>
+
+          <div class="m">
+            <div>
+              <div class="m-name">deepseek-flash-vision-exp</div>
+              <div class="m-sub">
+                <span class="hitbar"><i style="width:82.8%"></i></span>
+                <span class="hit-num">82.8%</span><span>命中 · 4 次</span>
+              </div>
+            </div>
+            <span class="m-amt">¥0.079</span>
+          </div>
+
+          <div class="save">
+            <span class="lbl">缓存节省</span>
+            <span class="val">¥0.46</span>
+            <span class="sub">未命中则需 ¥0.84</span>
+          </div>
+
+          <div class="card-foot">
+            <span>含 3 个子代理会话 · 官方在线同步</span>
+            <span>12:00 更新</span>
+          </div>
+        </span>
+      </span>
+      <span class="pill">低谷时段 · <b class="num v-ok">46.5h</b></span>
+    </span>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>这个方向保留</h3>
+      <ul>
+        <li>占比堆叠条 + 图例：钱花在哪一眼看到</li>
+        <li>每模型一条<span class="k">命中率刻度</span></li>
+        <li><span class="k">缓存节省金额</span>——本方向的核心增量</li>
+        <li>大金额作视觉锚点</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>这个方向砍掉</h3>
+      <ul>
+        <li>精确的 token 三列拆分（收进 hover 细节或省略）</li>
+        <li>表格式对齐（换取视觉表达力）</li>
+        <li>环形图 / 仪表盘指针（过度装饰）</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>风险</h3>
+      <p>「节省」是<b>推算值</b>不是账单值：它假设命中部分若不命中会全价计费。文案必须明确是估算，否则会被当成官方数字。</p>
+    </div>
+  </div>
+</body>
+</html>

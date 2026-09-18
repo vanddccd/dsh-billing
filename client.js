@@ -779,11 +779,14 @@ function fmtRemainShort(hours) {
 }
 
 // client/src/pills.css
-var pills_default = ".billing-pills { display: inline-flex; align-items: center; gap: 2px; }\n.billing-pill {\n  display: inline-flex; align-items: center; gap: 3px;\n  min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;\n  background: transparent; color: var(--dsw-alias-label-secondary);\n  font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;\n  transition: background 120ms ease, color 120ms ease;\n}\n.billing-pill:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }\n.billing-num { font-weight: 600; font-variant-numeric: tabular-nums; }\n.billing-ok { color: #43b97f; }\n.billing-warn { color: #e08a3e; }\n\n/* NumberFlow \u6E32\u67D3\u4E3A <number-flow-react> \u81EA\u5B9A\u4E49\u5143\u7D20\uFF0C\u5185\u90E8\u662F open shadow DOM\uFF1A\n   CSS \u81EA\u5B9A\u4E49\u5C5E\u6027\u4E0E\u53EF\u7EE7\u627F\u5C5E\u6027\uFF08color / font-*\uFF09\u90FD\u80FD\u7A7F\u900F\uFF0C\u4F46 shadow \u5185 :host \u8BBE\u4E86\n   line-height:1 \u2014\u2014 light DOM \u89C4\u5219\u4F18\u5148\u7EA7\u66F4\u9AD8\uFF0C\u8FD9\u91CC\u628A\u884C\u9AD8\u62C9\u56DE\u80F6\u56CA\u7684 18px\u3002 */\n.billing-num number-flow-react { line-height: inherit; }\n\n/* \u91D1\u989D\u69FD\uFF1A\u56FA\u5B9A\u6700\u5C0F\u5BBD\u5EA6 + \u53F3\u5BF9\u9F50\u3002\u4F4D\u6570\u5207\u6362\uFF08\xA50.0234 \u2194 \xA50.023\uFF09\u65F6\u53EA\u5728\u69FD\u5185\u6536\u7F29\uFF0C\n   \u4E0D\u63A8\u52A8\u53F3\u4FA7 tokens\u30027.2ch \u8986\u76D6 \xA50.0000 \u4E0E \xA5123.45 \u4E24\u79CD\u6700\u957F\u5F62\u6001\u3002 */\n.billing-money-slot { display: inline-flex; justify-content: flex-end; min-width: 7.2ch; }\n/* tokens \u69FD\uFF1A\u53F3\u5BF9\u9F50\uFF1Btokens \u5355\u8C03\u589E\u957F\uFF0C\u65E0\u9700\u515C\u5E95\u5BBD\u5EA6\u3002 */\n.billing-tokens-slot { display: inline-flex; justify-content: flex-end; }\n.billing-amount { display: inline-flex; align-items: baseline; }\n";
+var pills_default = "/* dsh-billing \u80F6\u56CA\u4E0E\u60AC\u505C\u6D6E\u5C42\u6837\u5F0F\u3002\n   \u6240\u6709\u989C\u8272\u53D6\u81EA DSH design token\uFF08packages/client/ui-theme/src/styles/design-platform.css\uFF09\uFF1A\n   - \u80F6\u56CA\u672C\u4F53\u968F\u4E3B\u9898\uFF1A--dsw-alias-*\n   - \u6D6E\u5C42\u6052\u4E3A\u6697\u5E95\uFF08\u6CBF\u7528 DSH tooltip \u8BED\u8A00\uFF09\uFF1A--dsw-alias-tooltip-bg + --dsw-static-*\n   \u4E0D\u518D\u786C\u7F16\u7801\u8272\u503C\u2014\u2014\u65E7\u7248\u7684 #43b97f / #e08a3e \u65E2\u4E0D\u8DDF\u968F\u4E3B\u9898\uFF0C\u4E5F\u504F\u79BB\u5B98\u65B9 state \u8BED\u4E49\u3002 */\n\n.billing-pills { display: inline-flex; align-items: center; gap: 2px; }\n.billing-pill {\n  /* \u6D6E\u5C42\u5B9A\u4F4D\u57FA\u51C6 */\n  position: relative;\n  display: inline-flex; align-items: center; gap: 3px;\n  min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px;\n  background: transparent; color: var(--dsw-alias-label-secondary);\n  font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer;\n  transition: background 120ms ease, color 120ms ease;\n}\n.billing-pill:hover,\n.billing-pill-open { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }\n.billing-pill:focus-visible { outline: 2px solid var(--dsw-alias-label-caption); outline-offset: 1px; }\n.billing-num { font-weight: 600; font-variant-numeric: tabular-nums; }\n\n/* \u72B6\u6001\u8272 = \u5B98\u65B9 state token\uFF08\u968F\u660E\u6697\u4E3B\u9898\u81EA\u52A8\u5207\u6362\uFF09 */\n.billing-ok { color: var(--dsw-alias-state-success-primary); }\n.billing-warn { color: var(--dsw-alias-state-warn-label); }\n/* \u4F4E\u4F59\u989D\uFF1A\u4F4E\u4E8E LOW_BALANCE_CNY\uFF08\u89C1 index.tsx\uFF09\u65F6\u6807\u7EA2 */\n.billing-low { color: var(--dsw-alias-state-error-primary); }\n\n/* NumberFlow \u6E32\u67D3\u4E3A <number-flow-react> \u81EA\u5B9A\u4E49\u5143\u7D20\uFF0C\u5185\u90E8\u662F open shadow DOM\uFF1A\n   CSS \u81EA\u5B9A\u4E49\u5C5E\u6027\u4E0E\u53EF\u7EE7\u627F\u5C5E\u6027\uFF08color / font-*\uFF09\u90FD\u80FD\u7A7F\u900F\uFF0C\u4F46 shadow \u5185 :host \u8BBE\u4E86\n   line-height:1 \u2014\u2014 light DOM \u89C4\u5219\u4F18\u5148\u7EA7\u66F4\u9AD8\uFF0C\u8FD9\u91CC\u628A\u884C\u9AD8\u62C9\u56DE\u80F6\u56CA\u7684 18px\u3002 */\n.billing-num number-flow-react { line-height: inherit; }\n\n/* \u91D1\u989D\u69FD\uFF1A\u56FA\u5B9A\u6700\u5C0F\u5BBD\u5EA6 + \u53F3\u5BF9\u9F50\u3002\u4F4D\u6570\u5207\u6362\uFF08\xA50.0234 \u2194 \xA50.023\uFF09\u65F6\u53EA\u5728\u69FD\u5185\u6536\u7F29\uFF0C\n   \u4E0D\u63A8\u52A8\u53F3\u4FA7 tokens\u30027.2ch \u8986\u76D6 \xA50.0000 \u4E0E \xA5123.45 \u4E24\u79CD\u6700\u957F\u5F62\u6001\u3002 */\n.billing-money-slot { display: inline-flex; justify-content: flex-end; min-width: 7.2ch; }\n/* tokens \u69FD\uFF1A\u53F3\u5BF9\u9F50\uFF1Btokens \u5355\u8C03\u589E\u957F\uFF0C\u65E0\u9700\u515C\u5E95\u5BBD\u5EA6\u3002 */\n.billing-tokens-slot { display: inline-flex; justify-content: flex-end; }\n.billing-amount { display: inline-flex; align-items: baseline; }\n\n/* \u2500\u2500 \u60AC\u505C\u6D6E\u5C42 \u2500\u2500\n   slot \u662F\u300C\u6865\u63A5\u533A\u300D\uFF1A\u4ECE\u80F6\u56CA\u5E95\u90E8\u4E00\u76F4\u5EF6\u4F38\u5230\u6D6E\u5C42\u9876\uFF08padding-top \u6491\u51FA\u89C6\u89C9\u4E0A\u7684 8px \u95F4\u9699\uFF09\uFF0C\n   \u8FD9\u6837\u9F20\u6807\u4ECE\u80F6\u56CA\u79FB\u5411\u6D6E\u5C42\u65F6\u4E0D\u4F1A\u7ECF\u8FC7\u975E hover \u533A\u57DF\uFF0C\u6D6E\u5C42\u5C31\u4E0D\u4F1A\u95EA\u65AD\u3002 */\n.billing-pop-slot {\n  position: absolute; top: 100%; left: -8px; z-index: 40;\n  display: block; padding-top: 8px;\n}\n/* \u6700\u53F3\u90A3\u9897\u80F6\u56CA\uFF08\u5CF0\u8C37\uFF09\u6539\u4E3A\u53F3\u5BF9\u9F50\uFF0C\u907F\u514D\u6D6E\u5C42\u6EA2\u51FA\u89C6\u53E3\u53F3\u7F18\u3002 */\n.billing-pill:last-child .billing-pop-slot { left: auto; right: -8px; }\n\n.billing-pop {\n  display: block; width: 322px; padding: 12px 14px 11px;\n  background: var(--dsw-alias-tooltip-bg);\n  border-radius: 8px;\n  /* \u8F7B\u9634\u5F71\uFF1A\u771F\u5B9E\u9875\u9762\u91CC\u6D6E\u5C42\u4F1A\u538B\u5728\u6D88\u606F\u6D41\u4E0A\uFF0C\u6697\u5E95\u4E0E\u6DF1\u8272\u5185\u5BB9\u76F8\u90BB\u65F6\u9700\u8981\u4E00\u5C42\u5206\u79BB */\n  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.35);\n  font-size: 12px; line-height: 1.55; font-weight: 400;\n  text-align: left; white-space: normal;\n}\n\n.billing-pop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }\n.billing-pop-label { color: var(--dsw-static-neutral-bluish-500); font-size: 11px; }\n.billing-pop-amt {\n  font-size: 18px; font-weight: 600; letter-spacing: -0.015em;\n  color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums;\n}\n.billing-pop-tk { margin-left: 7px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n.billing-pop-bad { font-size: 11px; color: var(--dsw-static-amber-400); }\n.billing-pop-warn { color: var(--dsw-static-amber-400); }\n.billing-pop-hit { color: var(--dsw-static-green-400); }\n\n/* \u5360\u6BD4\uFF1A3px \u5806\u53E0\u6761\uFF0C\u65E0\u5706\u89D2\u65E0\u5BB9\u5668\uFF1B\u5355\u6A21\u578B\u65F6\u4E0D\u6E32\u67D3 */\n.billing-pop-share-wrap { display: block; margin-top: 11px; }\n.billing-pop-share { display: flex; height: 3px; gap: 2px; margin-bottom: 7px; }\n.billing-seg { display: block; height: 100%; }\n.billing-seg-0 { background: var(--dsw-static-deepseek-450); }\n.billing-seg-1 { background: rgba(255, 255, 255, 0.3); }\n.billing-seg-2 { background: rgba(255, 255, 255, 0.46); }\n.billing-seg-3 { background: rgba(255, 255, 255, 0.62); }\n.billing-pop-lg {\n  display: flex; flex-wrap: wrap; gap: 5px 14px;\n  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;\n}\n.billing-pop-lg > span { display: inline-flex; align-items: baseline; gap: 5px; }\n.billing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 1px; }\n\n.billing-pop-rule { display: block; height: 1px; background: rgba(255, 255, 255, 0.13); margin: 11px 0; }\n\n.billing-pop-model { display: block; }\n.billing-pop-mrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }\n.billing-pop-mname {\n  color: var(--dsw-static-neutral-bluish-50);\n  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;\n}\n.billing-pop-mamt { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }\n.billing-pop-msub {\n  display: block; margin: 2px 0 9px;\n  font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;\n}\n.billing-pop-model:last-of-type .billing-pop-msub { margin-bottom: 0; }\n\n/* \u7F13\u5B58\u8282\u7701\uFF08\u63A8\u7B97\u503C\uFF09\uFF1A\u5BBF\u4E3B\u7B97\u597D\u4E0B\u53D1\u2014\u2014\u5BA2\u6237\u7AEF\u6CA1\u6709\u5355\u4EF7\uFF0C\u7B97\u4E0D\u51FA\u6765 */\n.billing-pop-save { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }\n.billing-pop-save-lbl { font-size: 11px; color: var(--dsw-static-neutral-bluish-300); }\n.billing-pop-save-val { font-weight: 600; color: var(--dsw-static-green-400); font-variant-numeric: tabular-nums; }\n.billing-pop-save-sub { margin-left: 8px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n\n.billing-pop-foot {\n  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;\n  margin-top: 10px; font-size: 11px; color: var(--dsw-static-neutral-bluish-500);\n}\n.billing-pop-source { display: block; margin-top: 3px; font-size: 11px; color: var(--dsw-static-neutral-bluish-600); }\n.billing-pop-note { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-400); }\n\n/* \u4F59\u989D\u6D6E\u5C42 */\n.billing-pop-bal { display: block; margin-top: 9px; }\n.billing-pop-bal-head {\n  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;\n  color: var(--dsw-static-neutral-bluish-300);\n}\n.billing-pop-bal-total { font-weight: 600; color: var(--dsw-static-neutral-bluish-50); font-variant-numeric: tabular-nums; }\n.billing-pop-bal-sub { display: block; font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums; }\n\n/* \u5CF0\u8C37\u6D6E\u5C42 */\n.billing-pop-tide-line { display: block; margin-top: 9px; color: var(--dsw-static-neutral-bluish-300); }\n.billing-pop-tide-rule { display: block; font-size: 11px; line-height: 1.6; color: var(--dsw-static-neutral-bluish-400); }\n\n/* \u52A8\u6548\u504F\u597D\uFF1A\u5173\u6389\u80F6\u56CA\u7684\u72B6\u6001\u8FC7\u6E21\uFF08NumberFlow \u81EA\u5E26 respectMotionPreference \u5B88\u536B\uFF09 */\n@media (prefers-reduced-motion: reduce) {\n  .billing-pill { transition: none; }\n}\n";
 
 // client/src/index.tsx
 var BILLING_CSS_ID = "dsh-billing-pills";
 var TOKENS_FALLBACK_MS = 800;
+var LOW_BALANCE_CNY = 5;
+var POP_SHOW_DELAY_MS = 120;
+var POP_HIDE_DELAY_MS = 90;
 if (typeof document !== "undefined") {
   let tag = document.querySelector(`style[data-plugin-css="${BILLING_CSS_ID}"]`);
   if (!tag) {
@@ -868,6 +871,49 @@ function useTide(sessionId) {
   }, []);
   return computeTide(new Date(now), rules ?? void 0);
 }
+function Popover({ open, body }) {
+  if (!open) return null;
+  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-slot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop", role: "tooltip" }, body));
+}
+function hitRate(m2) {
+  const denom = m2.inputTokens + m2.cacheReadTokens;
+  if (!Number.isFinite(denom) || denom <= 0) return null;
+  return m2.cacheReadTokens / denom * 100;
+}
+function shortModel(model) {
+  const bare = model.includes(":") ? model.slice(model.lastIndexOf(":") + 1) : model;
+  const short = bare.replace(/^deepseek-/, "").replace(/^v\d+(?:\.\d+)?-/, "");
+  return short.length > 20 ? short.slice(0, 19) + "\u2026" : short;
+}
+function ShareBar({ models, total }) {
+  const pct = (m2) => total > 0 ? m2.cost / total * 100 : 0;
+  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-share-wrap" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-share" }, models.map((m2, i2) => /* @__PURE__ */ (0, import_react3.createElement)("i", { key: m2.model + i2, className: `billing-seg billing-seg-${Math.min(i2, 3)}`, style: { width: `${pct(m2)}%` } }))), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-lg" }, models.map((m2, i2) => /* @__PURE__ */ (0, import_react3.createElement)("span", { key: m2.model + i2 }, /* @__PURE__ */ (0, import_react3.createElement)("i", { className: `billing-dot billing-seg-${Math.min(i2, 3)}` }), shortModel(m2.model), " ", pct(m2).toFixed(1), "%"))));
+}
+function ModelRow({ m: m2 }) {
+  const hit = hitRate(m2);
+  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-model" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-mrow" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-mname" }, m2.model, m2.priced ? "" : "\uFF08\u672A\u914D\u7F6E\u5355\u4EF7\uFF0C\u6309\u515C\u5E95\u4EF7\u4F30\u7B97\uFF09"), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-mamt" }, "\xA5", fmtCost(m2.cost))), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-msub" }, typeof m2.steps === "number" ? `${m2.steps} \u6B21\u8BF7\u6C42` : "\u8BF7\u6C42\u6B21\u6570\u672A\u77E5", hit === null ? null : /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, " \xB7 \u7F13\u5B58\u547D\u4E2D ", /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-pop-hit" }, hit.toFixed(1), "%"))));
+}
+function CostPopoverBody({ data }) {
+  const models = data.models ?? [];
+  if (models.length === 0) {
+    return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-note" }, "\u672C\u4F1A\u8BDD\u6682\u65E0\u5DF2\u8BB0\u8D26\u7684\u6A21\u578B\u7528\u91CF\u3002");
+  }
+  const multi = models.length > 1;
+  const total = data.cost;
+  const saved = data.cacheSaved ?? 0;
+  const subagents = data.subagentSessions ?? 0;
+  const failed = data.failedSessions ?? 0;
+  const updated = typeof data.updatedAt === "number" ? new Date(data.updatedAt).toLocaleTimeString() : null;
+  const source = data.pricingSource === "online" ? `\u5355\u4EF7\u6765\u6E90\uFF1A\u5B98\u65B9\u5728\u7EBF\u540C\u6B65${data.pricingSyncedAt ? `\uFF08${new Date(data.pricingSyncedAt).toLocaleString()}\uFF09` : ""}` : data.pricingSource === "builtin" ? "\u5355\u4EF7\u6765\u6E90\uFF1A\u5185\u7F6E\u9ED8\u8BA4\uFF08\u5728\u7EBF\u540C\u6B65\u4E0D\u53EF\u7528\uFF0C\u82E5\u5B98\u65B9\u6539\u4EF7\u53EF\u80FD\u5931\u51C6\uFF09" : "\u5355\u4EF7\u6765\u6E90\uFF1A\u5F85\u5BBF\u4E3B\u4E0A\u62A5\uFF08\u82E5\u521A\u66F4\u65B0\u8FC7\u63D2\u4EF6\uFF0C\u8BF7\u91CD\u542F dsh web \u540E\u5237\u65B0\u9875\u9762\uFF09";
+  return /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-label" }, multi ? `\u672C\u4F1A\u8BDD\u8D39\u7528 \xB7 ${models.length} \u4E2A\u6A21\u578B` : "\u672C\u4F1A\u8BDD\u8D39\u7528"), /* @__PURE__ */ (0, import_react3.createElement)("span", null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-amt" }, "\xA5", fmtCost(total)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-tk" }, data.totalTokens.toLocaleString(), " tk"))), multi ? /* @__PURE__ */ (0, import_react3.createElement)(ShareBar, { models, total }) : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), models.map((m2, i2) => /* @__PURE__ */ (0, import_react3.createElement)(ModelRow, { key: m2.model + i2, m: m2 })), saved > 0 ? /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-lbl" }, "\u7F13\u5B58\u8282\u7701"), /* @__PURE__ */ (0, import_react3.createElement)("span", null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-val" }, "\xA5", fmtCost(saved)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-save-sub" }, "\u672A\u547D\u4E2D\u5219\u9700 \xA5", fmtCost(total + saved))))) : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-foot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, subagents > 0 ? `\u542B ${subagents} \u4E2A\u5B50\u4EE3\u7406\u4F1A\u8BDD` : "\u4EC5\u672C\u4F1A\u8BDD", failed > 0 ? ` \xB7 \u26A0\uFE0F ${failed} \u4E2A\u65E5\u5FD7\u8BFB\u53D6\u5931\u8D25` : ""), /* @__PURE__ */ (0, import_react3.createElement)("span", null, updated ? `${updated} \u66F4\u65B0` : "")), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-source" }, source));
+}
+function BalancePopoverBody({ balData, cny, usd }) {
+  const row = (label, info, symbol) => /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal", key: label }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, label), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal-total" }, symbol, info.totalBalance)), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bal-sub" }, "\u5145\u503C ", symbol, info.toppedUpBalance, " \xB7 \u8D60\u91D1 ", symbol, info.grantedBalance));
+  return /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-label" }, "\u8D26\u6237\u4F59\u989D"), balData?.isAvailable === false ? /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-bad" }, "\u5F53\u524D\u4E0D\u53EF\u7528") : null), cny ? row("\u4EBA\u6C11\u5E01 (CNY)", cny, "\xA5") : /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-note" }, "\u672A\u8FD4\u56DE\u4EBA\u6C11\u5E01\u4F59\u989D\u3002"), usd ? row("\u7F8E\u5143 (USD)", usd, "$") : null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-foot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, "\u70B9\u51FB\u80F6\u56CA\u7ACB\u5373\u5237\u65B0")));
+}
+function TidePopoverBody({ tide, tideRemain }) {
+  return /* @__PURE__ */ (0, import_react3.createElement)(import_react3.Fragment, null, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-head" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-label" }, "DeepSeek API \u5CF0\u8C37\u5B9A\u4EF7"), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: tide.isPeak ? "billing-pop-warn" : "billing-pop-hit" }, tide.isPeak ? "\u9AD8\u5CF0\u65F6\u6BB5" : "\u4F4E\u8C37\u65F6\u6BB5")), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-tide-line" }, tide.isPeak ? `\u8DDD\u8F6C\u4F4E\u8C37\u8FD8\u6709 ${tideRemain}` : `\u8DDD\u8F6C\u9AD8\u5CF0\u8FD8\u6709 ${tideRemain}`), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-rule" }), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-tide-rule" }, "\u9AD8\u5CF0\uFF1A\u5468\u4E00\u81F3\u5468\u4E94 09:00\u201312:00\u300114:00\u201318:00\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09", /* @__PURE__ */ (0, import_react3.createElement)("br", null), "\u5176\u4F59\u65F6\u6BB5\uFF08\u542B\u5468\u672B\u5168\u5929\uFF09\u4E3A\u7A7A\u95F2\uFF1B\u7A7A\u95F2\u4EF7 = \u9AD8\u5CF0\u4EF7\u7684\u4E00\u534A\u3002"), /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pop-foot" }, /* @__PURE__ */ (0, import_react3.createElement)("span", null, "\u70B9\u51FB\u80F6\u56CA\u7ACB\u5373\u5237\u65B0")));
+}
 function BillingPills(props) {
   const sessionId = props.sessionId;
   const [costData, setCostData] = (0, import_react3.useState)(null);
@@ -876,6 +922,31 @@ function BillingPills(props) {
   const [balFailed, setBalFailed] = (0, import_react3.useState)(false);
   const costEpochRef = (0, import_react3.useRef)(0);
   const balEpochRef = (0, import_react3.useRef)(0);
+  const [openPop, setOpenPop] = (0, import_react3.useState)(null);
+  const showTimer = (0, import_react3.useRef)(null);
+  const hideTimer = (0, import_react3.useRef)(null);
+  const clearTimers = (0, import_react3.useCallback)(() => {
+    if (showTimer.current !== null) {
+      window.clearTimeout(showTimer.current);
+      showTimer.current = null;
+    }
+    if (hideTimer.current !== null) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+  const showPop = (0, import_react3.useCallback)(
+    (key) => {
+      clearTimers();
+      showTimer.current = window.setTimeout(() => setOpenPop(key), POP_SHOW_DELAY_MS);
+    },
+    [clearTimers]
+  );
+  const hidePop = (0, import_react3.useCallback)(() => {
+    clearTimers();
+    hideTimer.current = window.setTimeout(() => setOpenPop(null), POP_HIDE_DELAY_MS);
+  }, [clearTimers]);
+  (0, import_react3.useEffect)(() => clearTimers, [clearTimers]);
   const refreshCost = (0, import_react3.useCallback)(async () => {
     if (!sessionId) return;
     const epoch = ++costEpochRef.current;
@@ -927,80 +998,70 @@ function BillingPills(props) {
   const tide = useTide(sessionId);
   const tideLabel = tide.isPeak ? "\u9AD8\u5CF0\u65F6\u6BB5" : "\u4F4E\u8C37\u65F6\u6BB5";
   const tideRemain = fmtRemain(tide.nextChangeHours);
-  const tideSummary = `DeepSeek API \u5CF0\u8C37\u5B9A\u4EF7\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09
-\u9AD8\u5CF0\u65F6\u6BB5\uFF1A\u5468\u4E00\u81F3\u5468\u4E94 09:00\u201312:00\u300114:00\u201318:00\uFF1B\u5176\u4F59\uFF08\u542B\u5468\u672B\u5168\u5929\uFF09\u4E3A\u7A7A\u95F2\u65F6\u6BB5\u3002
-\u7A7A\u95F2\u4EF7 = \u9AD8\u5CF0\u4EF7\u7684\u4E00\u534A\u3002`;
-  const tideTitle = tide.isPeak ? `\u76EE\u524D\u4E3A\u9AD8\u5CF0\u65F6\u6BB5\u3002\u4F4E\u8C37\u4EF7\u8FD8\u8981 ${tideRemain}\u3002` : `\u5F53\u524D\u4E3A\u4F4E\u8C37\u65F6\u6BB5\u3002\u8FD8\u6709 ${tideRemain} \u53D8\u66F4\u4E3A\u9AD8\u5CF0\u4EF7\u3002
-${tideSummary}`;
-  let balTitle = "DeepSeek \u8D26\u6237\u4F59\u989D\uFF08\u70B9\u51FB\u5237\u65B0\uFF09";
-  if (cny) {
-    balTitle = `DeepSeek \u8D26\u6237\u4F59\u989D\uFF08\u70B9\u51FB\u5237\u65B0\uFF09
-\u4EBA\u6C11\u5E01\uFF1A\u603B \xA5${cny.totalBalance}\uFF08\u5145\u503C \xA5${cny.toppedUpBalance}\uFF0C\u8D60\u91D1 \xA5${cny.grantedBalance}\uFF09${balData?.isAvailable ? "" : "\uFF08\u5F53\u524D\u4E0D\u53EF\u7528\uFF09"}`;
-    if (usd) balTitle += `
-\u7F8E\u5143\uFF1A\u603B $${usd.totalBalance}\uFF08\u5145\u503C $${usd.toppedUpBalance}\uFF0C\u8D60\u91D1 $${usd.grantedBalance}\uFF09`;
-  }
-  const modelRows = costData?.models ?? [];
-  const subagentCount = costData?.subagentSessions ?? 0;
-  const failedCount = costData?.failedSessions ?? 0;
-  let costTitle = "\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF09\n\u70B9\u51FB\u7ACB\u5373\u5237\u65B0";
-  if (costData && modelRows.length > 0) {
-    const multiModel = modelRows.length > 1;
-    const sourceLine = costData.pricingSource === "online" ? `\u5355\u4EF7\u6765\u6E90\uFF1A\u5B98\u65B9\u5728\u7EBF\u540C\u6B65${costData.pricingSyncedAt ? `\uFF08${new Date(costData.pricingSyncedAt).toLocaleString()}\uFF09` : ""}` : costData.pricingSource === "builtin" ? "\u5355\u4EF7\u6765\u6E90\uFF1A\u5185\u7F6E\u9ED8\u8BA4\uFF08\u5728\u7EBF\u540C\u6B65\u6682\u4E0D\u53EF\u7528\uFF0C\u82E5\u5B98\u65B9\u6539\u4EF7\u53EF\u80FD\u5931\u51C6\uFF09" : "\u5355\u4EF7\u6765\u6E90\uFF1A\u5F85\u5BBF\u4E3B\u4E0A\u62A5\uFF08\u82E5\u521A\u66F4\u65B0\u8FC7\u63D2\u4EF6\uFF0C\u8BF7\u91CD\u542F dsh web \u540E\u5237\u65B0\u9875\u9762\uFF09";
-    const head = multiModel ? `\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF0C\u4EBA\u6C11\u5E01\uFF09
-\u672C\u4F1A\u8BDD\u4F7F\u7528\u4E86 ${modelRows.length} \u4E2A\u6A21\u578B\uFF1A` : "\u672C\u4F1A\u8BDD API \u8D39\u7528\u4F30\u7B97\uFF08\u5B98\u65B9\u5355\u4EF7\uFF0C\u4EBA\u6C11\u5E01\uFF09";
-    const body = modelRows.map((m2) => {
-      const share = multiModel && costData.cost > 0 ? `\uFF08\u5360 ${(m2.cost / costData.cost * 100).toFixed(1)}%\uFF09` : "";
-      const steps = typeof m2.steps === "number" ? ` \xB7 ${m2.steps} \u6B21\u8BF7\u6C42` : "";
-      return [
-        `${m2.model}${m2.priced ? "" : "\uFF08\u672A\u914D\u7F6E\u5355\u4EF7\uFF0C\u6309\u515C\u5E95\u4EF7\u4F30\u7B97\uFF09"}`,
-        `  \u8D39\u7528 \xA5${fmtCost(m2.cost)}${share}${steps}`,
-        `  \u8F93\u5165 ${m2.inputTokens.toLocaleString()} + \u7F13\u5B58\u547D\u4E2D ${m2.cacheReadTokens.toLocaleString()} / \u8F93\u51FA ${m2.outputTokens.toLocaleString()} tokens`
-      ].join("\n");
-    }).join("\n");
-    const totalLine = multiModel ? `\u5408\u8BA1 \xA5${fmtCost(costData.cost)}\uFF08${modelRows.length} \u4E2A\u6A21\u578B\u6C42\u548C\uFF09` : `\u5408\u8BA1 \xA5${fmtCost(costData.cost)}`;
-    const lines = [head, "", body, "", totalLine];
-    if (subagentCount > 0) {
-      lines.push(`\u53E3\u5F84\uFF1A\u672C\u4F1A\u8BDD + ${subagentCount} \u4E2A\u5B50\u4EE3\u7406\u4F1A\u8BDD\uFF08fork \u7EE7\u627F\u4E8B\u4EF6\u5DF2\u53BB\u91CD\uFF0C\u4E0D\u91CD\u590D\u8BA1\u8D39\uFF09`);
-    }
-    if (failedCount > 0) {
-      lines.push(`\u26A0\uFE0F \u53E6\u6709 ${failedCount} \u4E2A\u4F1A\u8BDD\u65E5\u5FD7\u8BFB\u53D6\u5931\u8D25\uFF0C\u672A\u8BA1\u5165`);
-    }
-    lines.push(sourceLine);
-    const updatedAt = typeof costData.updatedAt === "number" ? new Date(costData.updatedAt).toLocaleTimeString() : null;
-    lines.push(`${updatedAt ? `\u6570\u636E\u66F4\u65B0\u4E8E ${updatedAt} \xB7 ` : ""}\u70B9\u51FB\u7ACB\u5373\u5237\u65B0`);
-    costTitle = lines.join("\n");
-  }
-  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pills" }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pill", title: balTitle, onClick: () => refreshAll() }, "\u4F59\u989D", " ", /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num" + (cny ? " billing-ok" : "") }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-money-slot" }, /* @__PURE__ */ (0, import_react3.createElement)(
-    Rolling,
-    {
-      value: cny ? toNumber(cny.totalBalance) : null,
-      placeholder: balFailed ? "\u2014" : "\u2026",
-      prefix: "\xA5",
-      fractionDigits: 2,
-      locales: "zh-CN"
-    }
-  )))), /* @__PURE__ */ (0, import_react3.createElement)(
+  const cnyValue = cny ? toNumber(cny.totalBalance) : null;
+  const balUnavailable = balData?.isAvailable === false;
+  const balLow = !balUnavailable && cnyValue !== null && cnyValue < LOW_BALANCE_CNY;
+  const balClass = "billing-num" + (balUnavailable ? "" : cnyValue === null ? "" : balLow ? " billing-low" : " billing-ok");
+  const aria = (label, detail) => `${label}\u3002\u60AC\u505C\u67E5\u770B\u660E\u7EC6\uFF0C\u70B9\u51FB\u7ACB\u5373\u5237\u65B0\u3002${detail}`;
+  return /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-pills", onMouseLeave: hidePop }, /* @__PURE__ */ (0, import_react3.createElement)(
     "span",
     {
-      className: "billing-pill",
-      title: costTitle,
+      className: "billing-pill" + (openPop === "balance" ? " billing-pill-open" : ""),
+      onMouseEnter: () => showPop("balance"),
+      onFocus: () => showPop("balance"),
+      onBlur: hidePop,
       onClick: () => refreshAll(),
+      tabIndex: 0,
+      role: "button",
+      "aria-label": aria("DeepSeek \u8D26\u6237\u4F59\u989D", cny ? `\u4EBA\u6C11\u5E01\u603B\u4F59\u989D \xA5${cny.totalBalance}` : "")
+    },
+    "\u4F59\u989D",
+    " ",
+    balUnavailable ? /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num billing-warn" }, "\u4E0D\u53EF\u7528") : /* @__PURE__ */ (0, import_react3.createElement)("b", { className: balClass }, /* @__PURE__ */ (0, import_react3.createElement)("span", { className: "billing-money-slot" }, /* @__PURE__ */ (0, import_react3.createElement)(
+      Rolling,
+      {
+        value: cnyValue,
+        placeholder: balFailed ? "\u2014" : "\u2026",
+        prefix: "\xA5",
+        fractionDigits: 2,
+        locales: "zh-CN"
+      }
+    ))),
+    /* @__PURE__ */ (0, import_react3.createElement)(Popover, { open: openPop === "balance", body: /* @__PURE__ */ (0, import_react3.createElement)(BalancePopoverBody, { balData, cny, usd }) })
+  ), /* @__PURE__ */ (0, import_react3.createElement)(
+    "span",
+    {
+      className: "billing-pill" + (openPop === "cost" ? " billing-pill-open" : ""),
+      onMouseEnter: () => showPop("cost"),
+      onFocus: () => showPop("cost"),
+      onBlur: hidePop,
+      onClick: () => refreshAll(),
+      tabIndex: 0,
+      role: "button",
+      "aria-label": aria("\u672C\u4F1A\u8BDD API \u8D39\u7528", costData ? `\xA5${fmtCost(costData.cost)}` : ""),
       style: costFailed ? { opacity: 0.45 } : void 0
     },
     "\u4F1A\u8BDD",
     " ",
-    /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num" }, /* @__PURE__ */ (0, import_react3.createElement)(SessionAmount, { costData, costFailed, sessionId }))
+    /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num" }, /* @__PURE__ */ (0, import_react3.createElement)(SessionAmount, { costData, costFailed, sessionId })),
+    costData ? /* @__PURE__ */ (0, import_react3.createElement)(Popover, { open: openPop === "cost", body: /* @__PURE__ */ (0, import_react3.createElement)(CostPopoverBody, { data: costData }) }) : null
   ), /* @__PURE__ */ (0, import_react3.createElement)(
     "span",
     {
-      className: "billing-pill",
-      title: tideTitle,
-      onClick: () => refreshAll()
+      className: "billing-pill" + (openPop === "tide" ? " billing-pill-open" : ""),
+      onMouseEnter: () => showPop("tide"),
+      onFocus: () => showPop("tide"),
+      onBlur: hidePop,
+      onClick: () => refreshAll(),
+      tabIndex: 0,
+      role: "button",
+      "aria-label": aria(tideLabel, `\u8DDD\u5207\u6362 ${tideRemain}`)
     },
     tideLabel,
     " \xB7",
     " ",
-    /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num " + (tide.isPeak ? "billing-warn" : "billing-ok") }, fmtRemainShort(tide.nextChangeHours))
+    /* @__PURE__ */ (0, import_react3.createElement)("b", { className: "billing-num " + (tide.isPeak ? "billing-warn" : "billing-ok") }, fmtRemainShort(tide.nextChangeHours)),
+    /* @__PURE__ */ (0, import_react3.createElement)(Popover, { open: openPop === "tide", body: /* @__PURE__ */ (0, import_react3.createElement)(TidePopoverBody, { tide, tideRemain }) })
   ));
 }
 function apply(ctx) {
@@ -1013,5 +1074,12 @@ function apply(ctx) {
   );
 }
 var inject = ["slots"];
-var testHooks = { computeTide };
+var testHooks = {
+  computeTide,
+  hitRate,
+  shortModel,
+  CostPopoverBody,
+  BalancePopoverBody,
+  TidePopoverBody
+};
 return module.exports;};window.__ModuleLoader__.load({id:'dsh-billing',factory:makeFactory});

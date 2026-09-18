@@ -121,6 +121,27 @@ for (const [m,s] of [...seen.entries()].sort()) { tot += s.cost; console.log(`  
 console.log(`  合计 ¥${tot.toFixed(4)}`)
 ok('全部会话均命中实价', [...seen.values()].every(s => s.priced))
 
+console.log('\n=== H. 缓存节省 cacheSaved（推算值）===')
+{
+  // 周五 10:00（北京时间）＝高峰；flash 高峰价 0.04 / 2.0 / 8.0
+  const peak = Date.parse('2026-09-18T10:00:00+08:00')
+  const steps = new Map()
+  steps.set('1:1', {
+    turn: 1, step: 1, time: peak, model: 'deepseek-flash',
+    usage: { inputTokens: 0, cacheReadTokens: 1_000_000, outputTokens: 0 },
+  })
+  const full = M.summarize(steps, cfg, peak)
+  const row = full[0]
+  ok('命中 100 万 tokens 只按命中价计费', Math.abs(row.cost - 0.04) < 1e-9, `cost=${row.cost}`)
+  ok('节省 = 100万 × (未命中2.0 − 命中0.04)', Math.abs(row.savedCost - 1.96) < 1e-9, `savedCost=${row.savedCost}`)
+
+  // 无缓存命中时不应凭空产生节省
+  const steps2 = new Map()
+  steps2.set('1:1', { turn: 1, step: 1, time: peak, model: 'deepseek-flash',
+    usage: { inputTokens: 1_000_000, cacheReadTokens: 0, outputTokens: 0 } })
+  ok('无缓存命中则节省为 0', M.summarize(steps2, cfg, peak)[0].savedCost === 0)
+}
+
 console.log('\n=== G. 跨会话聚合（lineage 去重 + 防撞车）===')
 const mkUsage = (turn, step, input, output) => ({
   type: 'assistant/chunk',
