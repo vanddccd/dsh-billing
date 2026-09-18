@@ -6,7 +6,7 @@ import { createElement as h, Fragment, useCallback, useEffect, useRef, useState 
 import { Rolling } from './rolling'
 import { rpc } from './rpc'
 import { costFractionDigits, fmtCost, toNumber } from './format'
-import { computeTide, fmtRemain, fmtRemainShort, type Tide, type TideRules } from './tide'
+import { computeTide, fmtRemain, type Tide, type TideRules } from './tide'
 import BILLING_CSS from './pills.css'
 
 const BILLING_CSS_ID = 'dsh-billing-pills'
@@ -445,11 +445,21 @@ function BillingPills(props: any) {
   }, [])
 
   /**
-   * 刷新两个数据源。
-   * 「变暗」保底可见 REFRESH_DIM_MIN_MS —— 本地 RPC 可能几毫秒就返回，
-   * 不保底的话 dim 一闪而过，反馈等于没有。
+   * 静默刷新：只取数，**不发加载态、不动任何数字**。
+   * 挂载 / 切会话 / 轮次结束 / 页面切回前台都走它 —— 这些都是非用户主动的刷新。
+   * 尤其切会话：余额是账户级数据、与 session 无关，绝不能让它跟着变暗，
+   * 否则看起来像余额在加载或正在消失。
    */
-  const refreshAll = useCallback(async () => {
+  const refreshQuiet = useCallback(() => {
+    refreshCost()
+    refreshBalance()
+  }, [refreshCost, refreshBalance])
+
+  /**
+   * 用户点击刷新：带加载态，且「变暗」保底可见 REFRESH_DIM_MIN_MS
+   * —— 本地 RPC 可能几毫秒就返回，不保底会一闪而过、反馈等于没有。
+   */
+  const refreshByClick = useCallback(async () => {
     setRefreshing(true)
     const startedAt = Date.now()
     try {
@@ -465,11 +475,11 @@ function BillingPills(props: any) {
     }
   }, [refreshCost, refreshBalance])
 
-  // 挂载 / 切换会话：立即刷新
+  // 挂载 / 切换会话：立即刷新（静默）
   useEffect(() => {
     setCostData(null)
     setCostFailed(false)
-    refreshAll()
+    refreshQuiet()
   }, [sessionId])
 
   // 轮次结束刷新：running 从 true → false 时结算本轮（新版快照无 turn/step，改用 running 判断）
@@ -478,17 +488,17 @@ function BillingPills(props: any) {
   useEffect(() => {
     const wasRunning = prevRunningRef.current
     prevRunningRef.current = running
-    if (wasRunning && !running) refreshAll()
-  }, [running, refreshAll])
+    if (wasRunning && !running) refreshQuiet()
+  }, [running, refreshQuiet])
 
   // 页面从后台切回可见：立即刷新一次（非轮询）
   useEffect(() => {
     const onVisibility = () => {
-      if (!document.hidden) refreshAll()
+      if (!document.hidden) refreshQuiet()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [refreshAll])
+  }, [refreshQuiet])
 
   const cny = balData && balData.infos ? balData.infos.find((i) => i.currency === 'CNY') : undefined
   const usd = balData && balData.infos ? balData.infos.find((i) => i.currency === 'USD') : undefined
@@ -496,6 +506,14 @@ function BillingPills(props: any) {
   const tide = useTide(sessionId)
   const tideLabel = tide.isPeak ? '高峰时段' : '低谷时段'
   const tideRemain = fmtRemain(tide.nextChangeHours)
+  // 时段数字与余额、会话一样走 NumberFlow 逐位滚动。
+  // 旧 fmtRemainShort 的口径在此拆成 value + suffix：<1h 显示整分钟，>=1h 显示一位小数且整数不带小数。
+  const tideMinutes = tide.nextChangeHours < 1
+  const tideValue = tideMinutes
+    ? Math.max(1, Math.round(tide.nextChangeHours * 60))
+    : Math.round(tide.nextChangeHours * 10) / 10
+  const tideSuffix = tideMinutes ? 'm' : 'h'
+  const tideDigits = !tideMinutes && !Number.isInteger(tideValue) ? 1 : 0
 
   // 余额状态：低余额标红（阈值见 LOW_BALANCE_CNY），接口报不可用时直接显示「不可用」。
   const cnyValue = cny ? toNumber(cny.totalBalance) : null
@@ -510,7 +528,7 @@ function BillingPills(props: any) {
       {/* 余额 */}
       <span
         className={'billing-pill' + (refreshing ? ' is-refreshing' : '')}
-        onClick={() => refreshAll()}
+        onClick={() => refreshByClick()}
         tabIndex={0}
         role="button"
         aria-label={aria('DeepSeek 账户余额', cny ? `人民币总余额 ¥${cny.totalBalance}` : '')}
@@ -521,9 +539,12 @@ function BillingPills(props: any) {
         ) : (
           <b className={balClass}>
             <span className="billing-money-slot">
+              {/* 与 SessionAmount 同口径：无数据时 value 传 0（而非 null），
+                  这样 NumberFlow 始终挂载，数据到达时是**逐位滚上去**而不是瞬间跳出。
+                  只有请求失败才退化成占位符。 */}
               <Rolling
-                value={cnyValue}
-                placeholder={balFailed ? '—' : '…'}
+                value={balFailed ? null : (cnyValue ?? 0)}
+                placeholder="—"
                 prefix="¥"
                 fractionDigits={2}
                 locales="zh-CN"
@@ -537,7 +558,7 @@ function BillingPills(props: any) {
       {/* 会话费用 */}
       <span
         className={'billing-pill' + (refreshing ? ' is-refreshing' : '')}
-        onClick={() => refreshAll()}
+        onClick={() => refreshByClick()}
         tabIndex={0}
         role="button"
         aria-label={aria('本会话 API 费用', costData ? `¥${fmtCost(costData.cost)}` : '')}
@@ -553,14 +574,20 @@ function BillingPills(props: any) {
       {/* 峰谷时段 */}
       <span
         className="billing-pill"
-        onClick={() => refreshAll()}
+        onClick={() => refreshByClick()}
         tabIndex={0}
         role="button"
         aria-label={aria(tideLabel, `距切换 ${tideRemain}`)}
       >
         {tideLabel} ·{' '}
         <b className={'billing-num ' + (tide.isPeak ? 'billing-warn' : 'billing-ok')}>
-          {fmtRemainShort(tide.nextChangeHours)}
+          <Rolling
+            value={tideValue}
+            placeholder="—"
+            suffix={tideSuffix}
+            fractionDigits={tideDigits}
+            locales="en-US"
+          />
         </b>
         <Popover body={<TidePopoverBody tide={tide} tideRemain={tideRemain} />} />
       </span>

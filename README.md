@@ -24,6 +24,18 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 数字变化时逐位滚动（[NumberFlow](https://number-flow.barvian.me)，odometer 式：**只滚动值变化的位，未变的位静止**），含 `prefers-reduced-motion` 守卫（NumberFlow 内置 `respectMotionPreference`）。
 
+## 0.6.7：三个胶囊的数字统一走 NumberFlow + 修掉「切会话时余额数字淡出」
+
+两个问题其实是同一个根因，都由 0.6.5 / 0.6.6 引入：
+
+- **切会话时余额数字「淡出」**：挂载 / 切会话的 effect 调的是带加载态的 `refreshAll()`，它会 `setRefreshing(true)` 把余额数字压到 40% 透明度，还被 `REFRESH_DIM_MIN_MS = 220` 强留 220ms。**余额是账户级数据、与 session 无关，不该跟着变暗**（看起来像在加载或正在消失）。现拆成两个函数：
+  - `refreshQuiet()` —— 只取数，不发加载态、不动任何数字；挂载 / 切会话 / 轮次结束 / 切回前台都走它
+  - `refreshByClick()` —— 带加载态 + 保底可见时长；只由用户点击触发
+- **余额数字「没有动效」**：`Rolling` 在无数据时传 `value={null}`，会渲染成普通 `<span>…</span>`，数据到达才切成 NumberFlow —— **首挂载直接显示数字，不滚动**。现与 `SessionAmount` 统一口径：无数据时传 `0`，NumberFlow 始终挂载，数据到达时逐位滚上去；只有请求失败才退回占位符
+- **时段胶囊补上 NumberFlow**：此前它是纯文本 `{fmtRemainShort(...)}`（如 `3.9h`），是三个胶囊里唯一没有数字动效的。现拆成 `value + suffix + fractionDigits`（`<1h` 显示整分钟；`>=1h` 一位小数且整数不带小数），走 `<Rolling>`
+
+至此三个胶囊的数字**全部**是 NumberFlow：余额 1 + 会话 2（金额 + tokens）+ 时段 1 = **4 个实例**。`fmtRemainShort` 客户端不再使用（`tide.ts` 的导出保留，未删）。
+
 ## 0.6.6：撤掉刷新 pop —— 它动了数字子树，打断了 NumberFlow 的链条时序
 
 0.6.5 用 `key={pulseKey}` 包住数字来重播 pop，**这是个实质性错误**：`key` 变化会让 `SessionAmount` 整个卸载重建 —— 内部 `tokensShown` 归零、NumberFlow 重新挂载，**「金额先滚、tokens 随后」的链条时序被打断**。
