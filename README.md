@@ -42,6 +42,17 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 > 三张图摄于本机实机环境。会话费用那张拍在宿主侧 `cacheSaved` 字段生效**之前**，所以里面**没有「缓存节省」行**（该行要重启 `dsh web` 让 `host.js` 重新加载后才会出现）；除此之外即为当前样式。设计稿的四个方向见 [`docs/mockup/`](./docs/mockup/)。
 
+## 0.7.1：补齐节假日规则的两处对外文案 + 新增同步链路探针
+
+0.7.0 只改了判定逻辑，两处**用户可见的规则原文**漏了，口径与实际计费不一致：
+
+- `host.js` 的 `/cost`、`deepseek_billing` 输出「说明」行仍写「2026-08-17 起峰谷价、周末全天空闲价」，没提法定节假日
+- `client/src/index.tsx` 峰谷浮层里的官方规则原文仍写「高峰：周一至周五 09:00–12:00、14:00–18:00」
+
+两处均已对齐官方 09-19 说明，`client.js` 已重建（浮层那句要**刷新页面**才生效）。
+
+**新增 `scripts/probe-sync.mjs`** —— 回答「『单价来源：官方在线同步』是真的还是机制空转」。在独立 node 进程里真实调用 `apply()`，套假宿主 ctx（commands / tools / connection.rpc / logger 全接到本地收集器）+ 可注入的 fetch 与 setTimeout，覆盖四个场景共 12 项断言：正常联网（真发请求 → HTTP 200 → 走成功分支 → 12h 周期）、断网、官方页 500、200 但无价格表（这三种必须**明确判失败 + 60s 退避**，尤其第四种不许拿残缺数据冒充成功）。不启动、也不影响运行中的 dsh web。
+
 ## 0.7.0：中国法定节假日全天空闲（对齐官方 2026-09-19《API 峰谷时间说明》）
 
 官方 2026-09-19 发布 API 峰谷时间说明：**调休上班的周末、中国法定节假日全天均按空闲时段计费**。定价页脚注同步为「北京时间周一至周五（**不含中国法定节假日**）9:00–12:00、14:00–18:00 为高峰时段；其余时段，包括周末及中国法定节假日全天均为空闲时段」。
@@ -211,6 +222,7 @@ seeded session constructor seed must equal its inherited prefix
 - `scripts/build.sh` — 构建脚本：esbuild 打包 `client/src/index.tsx` → `client.js`
   - `conversation.session.header.actions` 槽位（负数 order = 静态会话上下文）→ 余额 + 会话费用 + 峰谷时段三胶囊
 - `scripts/verify-pricing.mjs` — 定价回归脚本（`node scripts/verify-pricing.mjs`），官方页在线抓取，失败回退本地缓存
+- `scripts/probe-sync.mjs` — 同步链路探针（`node scripts/probe-sync.mjs`），受控环境跑「正常联网 / 断网 / HTTP 500 / 200 但无价格表」四个场景，验证「官方在线同步」不是空转
 - `package.json` — 声明 `dsh.bundle`（空 patch）+ `dsh.client`（web 平台）
 - `cordis.patch.yml` — 空层；本插件由 profile 的 `cordis.patch.yml` 插入行激活
 
@@ -271,6 +283,8 @@ config:
 - 解析失败自动回退：上次成功在线值 → 内置默认值；费用输出会标注当前来源与同步时间
 - 优先级：**用户显式配置 > 官方在线同步 > 内置默认**（用户对某个模型写过 pricing 就永远以它为准）
 - 可在 `config.priceSync` 关闭或调整：`{ enabled: true, url: "...", intervalMs: 43200000 }`
+- **怀疑同步是空转时，一条命令自证**：`node scripts/probe-sync.mjs`。它不碰运行中的宿主，只把插件的同步链路拉进受控环境跑一遍——真发请求、真解析、失败真退避，四个场景逐项打勾。配合 `node scripts/verify-pricing.mjs`（解析器 / 内置价表 / 峰谷与节假日边界 / 改价不回溯 / 客户端兜底口径对齐）就是完整证据链
+- **已知缺口（0.7.1 时点）**：插件调用的 `ctx.logger.info/warn` 在本机 `~/.dsh/dsh-web.log`、`dsh-web.err.log`、`~/.dsh/logs/` 里**都没有输出**——探针可确认日志函数确实被调用且参数正确，是 dsh 侧不落盘。后果：**同步失败是静默的**，只能靠浮层「单价来源」那行字判断。待补：把同步结果（模型数 + 关键单价）走 console 落到 `dsh-web.log`，便于 `grep deepseek-billing` 事后审计
 
 ## 计费口径
 
@@ -286,7 +300,7 @@ config:
 
 - 改 `client/src/*` 后：先 `bash scripts/build.sh` 重新构建 `client.js`（**勿手改产物**），再刷新页面
 - 构建依赖 `@number-flow/react`（`npm install`，仅构建时需要，产物已内联）
-- 改 `host.js` 后：跑 `node scripts/verify-pricing.mjs` 回归（在线抓官方页，失败用缓存），再重启 `dsh web`；若热重载未生效（Node ESM 缓存），可改文件名/包名触发重导入
+- 改 `host.js` 后：先跑 `node scripts/verify-pricing.mjs`（定价回归 74 项）与 `node scripts/probe-sync.mjs`（同步链路四场景 12 项），再重启 `dsh web`；若热重载未生效（Node ESM 缓存），可改文件名/包名触发重导入
 - 官方改价后的处理顺序：跑回归脚本看 A 段解析结果 → 若官方价与内置最新档不一致，同步机制会自动追加新档；若是**未来生效**的公告价（下线/降价计划），则手工预置一条 schedule 档更稳
 
 官方文档：
