@@ -388,9 +388,11 @@ function TidePopoverBody({ tide, tideRemain }: { tide: Tide; tideRemain: string 
       </span>
       <span className="billing-pop-rule" />
       <span className="billing-pop-tide-rule">
-        高峰：周一至周五 09:00–12:00、14:00–18:00（北京时间）
+        高峰：周一至周五（不含中国法定节假日）09:00–12:00、14:00–18:00（北京时间）
         <br />
-        其余时段（含周末全天）为空闲；空闲价 = 高峰价的一半。
+        其余时段（含周末全天、中国法定节假日全天、调休上班的周末）为空闲；
+        <br />
+        空闲价 = 高峰价的一半。
       </span>
       <span className="billing-pop-foot">
         <span>点击胶囊立即刷新</span>

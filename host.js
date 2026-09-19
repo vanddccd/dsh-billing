@@ -668,7 +668,7 @@ export function formatCostText(usage, pricingCtx) {
       `缓存命中省下约 ¥${fmtMoney(saved)}（推算值，非账单值：命中 token 数 × 未命中价与命中价之差；若这些 token 全部未命中，则需约 ¥${fmtMoney(total + saved)}）。`,
     )
   }
-  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价、周末全天空闲价；2026-09-10 12:00 起 flash 系列降价）。')
+  lines.push('', '说明：按每次请求实际计费时间套用单价（2026-08-17 起峰谷价、周末全天空闲价、中国法定节假日全天空闲价；2026-09-10 12:00 起 flash 系列降价）。')
   if (sub > 0) {
     lines.push(`口径：本会话 + ${sub} 个子代理会话；子代理日志中 fork 继承的父会话事件已剔除，不重复计费。`)
   }
