@@ -7,8 +7,8 @@
  *   /cost     查看当前会话的 API 费用估算（人民币）
  *   工具 deepseek_billing —— 让模型自己也能查询余额 / 会话费用
  *
- * 定价：默认内置 DeepSeek 官方 API 单价（2026-08-17 起峰谷价、周末全天空闲价；
- * 2026-09-10 12:00 起 flash 系列降价），限时内测模型按定价系列匹配；
+ * 定价：默认内置 DeepSeek 官方 API 单价（2026-08-17 起峰谷价、周末全天空闲价、
+ * 中国法定节假日全天空闲价；2026-09-10 12:00 起 flash 系列降价），限时内测模型按定价系列匹配；
  * 可在 profile 的 cordis.patch.yml 里通过 config.pricing 覆盖。
  *
  * 无任何运行时依赖，直接以绝对路径加载。
@@ -24,6 +24,33 @@ const DEFAULT_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 const CRED_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const BEIJING_OFFSET_MINUTES = 480
 const DEFAULT_PEAK_WINDOWS = [[9, 12], [14, 18]]
+
+/**
+ * 中国法定节假日（北京时间的放假日，YYYY-MM-DD）。
+ *
+ * 官方口径（DeepSeek 2026-09-19《API 峰谷时间说明》）：中国法定节假日**全天**按空闲时段计费；
+ * 调休上班的周末同样全天空闲——后者由周末规则天然覆盖，故本表只收「放假」日期，不收补班日。
+ *
+ * 只收当次通知（《国务院办公厅关于 2026 年部分节假日安排的通知》）的中秋 + 国庆：
+ *   中秋 09-25 ~ 09-27、国庆 10-01 ~ 10-07。
+ * 其余假期（元旦/春节/清明/五一/端午）不在当次通知口径内，未收录即按普通工作日峰谷判定
+ * ——口径偏保守：宁可把假日高峰误报成高峰，也不把普通工作日的高峰误报成空闲。
+ * 新通知发布后在此追加即可；也可用 config.pricing[<模型>].holidays 覆盖。
+ */
+const CN_HOLIDAYS = [
+  // 中秋节：2026-09-25（周五）~ 09-27（周日）
+  '2026-09-25',
+  '2026-09-26',
+  '2026-09-27',
+  // 国庆节：2026-10-01（周四）~ 10-07（周三）
+  '2026-10-01',
+  '2026-10-02',
+  '2026-10-03',
+  '2026-10-04',
+  '2026-10-05',
+  '2026-10-06',
+  '2026-10-07',
+]
 
 /**
  * 官方单价（人民币 / 百万 tokens），按「定价系列」组织。
@@ -92,6 +119,9 @@ function makeSchedule(effectiveAt, offPeak, peak) {
     peakWindows: DEFAULT_PEAK_WINDOWS.map((window) => [...window]),
     // 官方规则：周六/周日全天执行空闲价。
     weekendOffPeak: true,
+    // 官方规则（2026-09-19 说明）：中国法定节假日全天执行空闲价。
+    holidayOffPeak: true,
+    holidays: [...CN_HOLIDAYS],
     offPeak: { ...offPeak },
     peak: { ...peak },
   }
@@ -286,6 +316,7 @@ function cloneEntry(entry) {
     copy.schedules = entry.schedules.map((sched) => ({
       ...sched,
       peakWindows: Array.isArray(sched.peakWindows) ? sched.peakWindows.map((w) => [...w]) : sched.peakWindows,
+      holidays: Array.isArray(sched.holidays) ? [...sched.holidays] : sched.holidays,
       offPeak: { ...sched.offPeak },
       peak: { ...sched.peak },
     }))
@@ -371,6 +402,23 @@ export function mergeConfig(config) {
   }
 }
 
+/** 北京时间的日期键 `YYYY-MM-DD`（shifted 是「已加偏移、按 UTC 取值」的 Date）。 */
+function beijingDateKey(shifted) {
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(shifted.getUTCDate()).padStart(2, '0')
+  return `${shifted.getUTCFullYear()}-${month}-${day}`
+}
+
+/**
+ * 该时刻（按北京时间的日期）是否落在法定节假日表内。
+ * 表为空 / 未配置时返回 false —— 未收录即当普通工作日，口径偏保守。
+ */
+export function isStatutoryHoliday(holidays, timeMs, offsetMinutes) {
+  if (!Array.isArray(holidays) || holidays.length === 0) return false
+  const offset = Number.isFinite(offsetMinutes) ? offsetMinutes : BEIJING_OFFSET_MINUTES
+  return holidays.includes(beijingDateKey(new Date(timeMs + offset * 60000)))
+}
+
 /** 在 timeMs 时刻该模型适用的单价（含峰谷时段判断）。 */
 export function rateAt(pricingEntry, timeMs) {
   let active = null
@@ -386,6 +434,11 @@ export function rateAt(pricingEntry, timeMs) {
   // 2026-08-23 起官方规则：周末（周六/周日）全天执行低谷价。
   const weekday = shifted.getUTCDay() // 0=周日 … 6=周六
   if (active.weekendOffPeak === true && (weekday === 0 || weekday === 6)) {
+    return { rate: active.offPeak, mode: 'off-peak' }
+  }
+  // 2026-09-19 官方《API 峰谷时间说明》：中国法定节假日全天执行空闲价。
+  // 调休上班的周末不在这里特殊处理——周末规则本身已把它们判成空闲，与新规一致。
+  if (active.holidayOffPeak === true && isStatutoryHoliday(active.holidays, timeMs, offset)) {
     return { rate: active.offPeak, mode: 'off-peak' }
   }
   // 峰谷判定必须精确到分钟：官方高峰结束时刻是整点闭区间（12:00、18:00），
@@ -417,7 +470,7 @@ export function resolveTide(pricingCtx, nowMs) {
   return {
     isPeak: mode === 'peak',
     mode,
-    // 一并下发窗口与周末规则：客户端 RPC 失败时可按同一份窗口降级自算，避免硬编码口径漂移。
+    // 一并下发窗口、周末与节假日规则：客户端 RPC 失败时可按同一份规则降级自算，避免硬编码口径漂移。
     ...tideWindows(entry, now),
     updatedAt: now,
   }
@@ -430,10 +483,12 @@ function tideWindows(entry, now) {
     const at = new Date(sched.effectiveAt).getTime()
     if (Number.isFinite(at) && now >= at && (!active || at > new Date(active.effectiveAt).getTime())) active = sched
   }
-  if (!active) return { windowsHours: DEFAULT_PEAK_WINDOWS.map((w) => [...w]), weekendOffPeak: false, timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES }
+  if (!active) return { windowsHours: DEFAULT_PEAK_WINDOWS.map((w) => [...w]), weekendOffPeak: false, holidayOffPeak: true, holidays: [...CN_HOLIDAYS], timezoneOffsetMinutes: BEIJING_OFFSET_MINUTES }
   return {
     windowsHours: (Array.isArray(active.peakWindows) && active.peakWindows.length > 0 ? active.peakWindows : DEFAULT_PEAK_WINDOWS).map((w) => [...w]),
     weekendOffPeak: active.weekendOffPeak === true,
+    holidayOffPeak: active.holidayOffPeak === true,
+    holidays: Array.isArray(active.holidays) ? [...active.holidays] : [],
     timezoneOffsetMinutes: Number.isFinite(active.timezoneOffsetMinutes) ? active.timezoneOffsetMinutes : BEIJING_OFFSET_MINUTES,
   }
 }

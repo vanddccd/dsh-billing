@@ -735,21 +735,44 @@ function toNumber(raw) {
 var DEFAULT_TZ_OFFSET_MINUTES = 480;
 var DEFAULT_WINDOWS = [[9, 12], [14, 18]];
 var DAY_MS = 24 * 3600 * 1e3;
+var FALLBACK_HOLIDAYS = [
+  // 中秋 2026-09-25 ~ 09-27
+  "2026-09-25",
+  "2026-09-26",
+  "2026-09-27",
+  // 国庆 2026-10-01 ~ 10-07
+  "2026-10-01",
+  "2026-10-02",
+  "2026-10-03",
+  "2026-10-04",
+  "2026-10-05",
+  "2026-10-06",
+  "2026-10-07"
+];
 function zonedParts(date, rules) {
   const offset = rules?.timezoneOffsetMinutes ?? DEFAULT_TZ_OFFSET_MINUTES;
   const zoned = new Date(date.getTime() + offset * 60 * 1e3);
-  return { weekday: zoned.getUTCDay(), minutes: zoned.getUTCHours() * 60 + zoned.getUTCMinutes() };
+  const month = String(zoned.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(zoned.getUTCDate()).padStart(2, "0");
+  return {
+    weekday: zoned.getUTCDay(),
+    minutes: zoned.getUTCHours() * 60 + zoned.getUTCMinutes(),
+    dateKey: `${zoned.getUTCFullYear()}-${month}-${day}`
+  };
 }
 function rulesOf(rules) {
   return {
     windows: rules?.windowsHours?.length ? rules.windowsHours : DEFAULT_WINDOWS,
-    weekendOffPeak: rules?.weekendOffPeak ?? true
+    weekendOffPeak: rules?.weekendOffPeak ?? true,
+    holidayOffPeak: rules?.holidayOffPeak ?? true,
+    holidays: rules?.holidays ?? FALLBACK_HOLIDAYS
   };
 }
 function isPeakAt(date, rules) {
-  const { windows, weekendOffPeak } = rulesOf(rules);
-  const { weekday, minutes } = zonedParts(date, rules);
+  const { windows, weekendOffPeak, holidayOffPeak, holidays } = rulesOf(rules);
+  const { weekday, minutes, dateKey } = zonedParts(date, rules);
   if (weekendOffPeak && (weekday === 0 || weekday === 6)) return false;
+  if (holidayOffPeak && holidays.includes(dateKey)) return false;
   return windows.some(([start, end]) => minutes >= start * 60 && minutes < end * 60);
 }
 function nextChangeHours(date, rules) {

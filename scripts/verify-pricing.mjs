@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 const PRICING_URL = 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing/'
 const CACHE_PATH = path.join(os.tmpdir(), 'dsh-billing-pricing.html')
@@ -80,6 +81,75 @@ ok('客户兜底窗口归一化与 host 一致', JSON.stringify(M.htmlTables('<t
 console.log('\n=== C. 峰谷边界（分钟粒度）===')
 const want = [['2026-09-11T08:59:00+08:00','off-peak'],['2026-09-11T09:00:00+08:00','peak'],['2026-09-11T11:59:00+08:00','peak'],['2026-09-11T12:00:00+08:00','off-peak'],['2026-09-11T12:30:00+08:00','off-peak'],['2026-09-11T14:00:00+08:00','peak'],['2026-09-11T17:59:00+08:00','peak'],['2026-09-11T18:00:00+08:00','off-peak'],['2026-09-12T10:00:00+08:00','off-peak'],['2026-09-13T10:00:00+08:00','off-peak'],['2026-09-14T10:00:00+08:00','peak']]
 for (const [iso, exp] of want) ok(`${iso.slice(5,16)} → ${exp}`, M.rateAt(fl.entry, new Date(iso).getTime()).mode === exp, M.rateAt(fl.entry, new Date(iso).getTime()).mode)
+
+console.log('\n=== C2. 法定节假日全天空闲（2026-09-19 官方说明）===')
+{
+  const H = (iso) => M.rateAt(fl.entry, new Date(iso).getTime()).mode
+  // 官方口径：中国法定节假日全天按空闲价；当次通知＝中秋 09-25~27、国庆 10-01~07
+  for (const [iso, label] of [
+    ['2026-09-25T10:00:00+08:00', '中秋 周五 10:00'],
+    ['2026-09-25T15:00:00+08:00', '中秋 周五 15:00'],
+    ['2026-10-01T09:00:00+08:00', '国庆 周四 09:00'],
+    ['2026-10-02T17:59:00+08:00', '国庆 周五 17:59'],
+    ['2026-10-05T10:00:00+08:00', '国庆 周一 10:00'],
+    ['2026-10-07T14:30:00+08:00', '国庆 周三 14:30'],
+  ]) ok(`${label} → off-peak`, H(iso) === 'off-peak', H(iso))
+  ok('节假日按空闲档计价 0.02/1/4', R(fl.entry, '2026-10-01T10:00:00+08:00') === 'off-peak|0.02/1/4', R(fl.entry, '2026-10-01T10:00:00+08:00'))
+  // 调休上班的周末：周末规则已覆盖，新规同样要求空闲
+  ok('09-20 周日补班 → off-peak', H('2026-09-20T10:00:00+08:00') === 'off-peak', H('2026-09-20T10:00:00+08:00'))
+  ok('10-10 周六补班 → off-peak', H('2026-10-10T10:00:00+08:00') === 'off-peak', H('2026-10-10T10:00:00+08:00'))
+  // 未收录的普通工作日不受影响（口径偏保守，不把工作日误判成空闲）
+  for (const [iso, label] of [
+    ['2026-09-22T10:00:00+08:00', '09-22 周二 10:00'],
+    ['2026-09-24T15:00:00+08:00', '09-24 周四 15:00'],
+    ['2026-09-28T10:00:00+08:00', '09-28 周一 10:00（中秋后）'],
+    ['2026-10-08T10:00:00+08:00', '10-08 周四 10:00（国庆后）'],
+  ]) ok(`${label} → peak`, H(iso) === 'peak', H(iso))
+  // 节假日 vs 相邻工作日：同一钟点结论必须相反（防「整表被误当空闲」这类粗错）
+  ok('节假日与相邻工作日同钟点结论相反', H('2026-10-01T10:00:00+08:00') === 'off-peak' && H('2026-10-08T10:00:00+08:00') === 'peak')
+  // 空节假日表 / 关掉节假日规则 → 回落到峰谷判定，不误判空闲
+  const noHol = { ...fl.entry, schedules: fl.entry.schedules.map((s) => ({ ...s, holidays: [] })) }
+  ok('holidays 为空 → 工作日仍 peak', M.rateAt(noHol, new Date('2026-09-22T10:00:00+08:00').getTime()).mode === 'peak')
+  const offSw = { ...fl.entry, schedules: fl.entry.schedules.map((s) => ({ ...s, holidays: ['2026-09-22'], holidayOffPeak: false })) }
+  ok('holidayOffPeak=false → 工作日仍 peak', M.rateAt(offSw, new Date('2026-09-22T10:00:00+08:00').getTime()).mode === 'peak')
+  // 日界按北京时间，不是 UTC
+  ok('isStatutoryHoliday 按北京时间日界', M.isStatutoryHoliday(['2026-10-01'], Date.parse('2026-10-01T00:30:00+08:00'), 480) === true && M.isStatutoryHoliday(['2026-10-01'], Date.parse('2026-09-30T23:30:00+08:00'), 480) === false)
+  // tide RPC 一并下发节假日规则，供客户端兜底自算
+  const th = M.resolveTide(cfg, new Date('2026-10-01T10:00:00+08:00').getTime())
+  ok('tide 10-01 isPeak=false', th.isPeak === false, JSON.stringify(th.mode))
+  ok('tide 下发 holidayOffPeak=true', th.holidayOffPeak === true)
+  ok('tide 下发 holidays 含 2026-10-01', Array.isArray(th.holidays) && th.holidays.includes('2026-10-01'), JSON.stringify(th.holidays))
+  ok('tide 09-22 isPeak=true（对照）', M.resolveTide(cfg, new Date('2026-09-22T10:00:00+08:00').getTime()).isPeak === true)
+}
+
+console.log('\n=== C3. 客户端兜底口径与 host 一致（client/src/tide.ts）===')
+{
+  const ROOT = fileURLToPath(new URL('..', import.meta.url))
+  const esbuild = process.env.ESBUILD ?? '/Users/van/dev/deepseek-harness/node_modules/.bin/esbuild'
+  if (!fs.existsSync(esbuild)) {
+    console.log(`  ⚠️ 跳过：未找到 esbuild（${esbuild}）`)
+  } else {
+    const tmp = path.join(os.tmpdir(), `dsh-billing-tide-${process.pid}.mjs`)
+    execSync(`"${esbuild}" "${path.join(ROOT, 'client/src/tide.ts')}" --bundle --format=esm --platform=node --outfile="${tmp}"`, { stdio: 'ignore' })
+    const C = await import(tmp)
+    const samples = [
+      '2026-09-20T10:00:00+08:00', '2026-09-22T10:00:00+08:00', '2026-09-25T10:00:00+08:00',
+      '2026-09-25T20:00:00+08:00', '2026-09-26T10:00:00+08:00', '2026-10-01T09:00:00+08:00',
+      '2026-10-05T15:00:00+08:00', '2026-10-08T10:00:00+08:00', '2026-10-10T10:00:00+08:00',
+    ]
+    let drift = 0
+    for (const iso of samples) {
+      const ms = new Date(iso).getTime()
+      const hostPeak = M.rateAt(fl.entry, ms).mode === 'peak'
+      const rules = M.resolveTide(cfg, ms)
+      if (C.isPeakAt(new Date(ms), rules) !== hostPeak) drift++
+      if (C.computeTide(new Date(ms), rules).isPeak !== hostPeak) drift++
+    }
+    ok(`${samples.length} 个样本：客户端兜底与 host 结论一致`, drift === 0, drift ? `${drift} 处漂移` : '')
+    ok('客户端内置兜底表含国庆', (C.FALLBACK_RULES.holidays ?? []).includes('2026-10-01'))
+    fs.rmSync(tmp, { force: true })
+  }
+}
 
 console.log('\n=== D. 同步幂等 + 不回溯（M1 配套）===')
 const layered = M.layerPricing(parsed ?? null, undefined, Date.now())
