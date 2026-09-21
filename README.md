@@ -34,13 +34,15 @@ DeepSeek Harness 插件：**账户余额** + **会话费用**（人民币），�
 
 **会话费用** —— 分模型拆分（模型 + 金额 + 请求次数 + 缓存命中率）与**峰谷拆分**（高峰 / 低谷各自金额 + token 数）；多于 1 个模型 / 多于 1 个峰谷档时给 3px 占比条与内联图例；底部给出「缓存节省」与「未命中则需」对照价；脚注是子代理会话数与数据新鲜度（相对时间）：
 
-![会话费用浮层](./docs/screenshots/popover-cost.png)
+![会话费用浮层（含峰谷拆分）](./docs/screenshots/popover-cost-tide.png)
+
+改前样式留作对照：[`docs/screenshots/popover-cost.png`](./docs/screenshots/popover-cost.png)（0.7.2 之前，缺「缓存节省」行与「峰谷拆分」段）。
 
 **峰谷时段** —— 当前时段、距切换时长、官方规则原文：
 
 ![峰谷浮层](./docs/screenshots/popover-tide.png)
 
-> 三张图摄于本机实机环境。会话费用那张拍在 0.7.1 **之前**，所以里面既**没有「缓存节省」行**、也**没有「峰谷拆分」段**（两者都要重启 `dsh web` 让 `host.js` 重新加载后才会出现）；除此之外即为当前样式。设计稿的四个方向见 [`docs/mockup/`](./docs/mockup/)。
+> 图摄于本机实机环境，数字为真实用量。除 `popover-cost.png` 外均为当前样式；`popover-cost.png` 是 0.7.2 之前的旧样式（缺「缓存节省」行与「峰谷拆分」段），留作对照。设计稿的四个方向见 [`docs/mockup/`](./docs/mockup/)。
 
 ## 0.7.2：会话费用浮层新增「峰谷拆分」——高峰花了多少、低谷花了多少
 
