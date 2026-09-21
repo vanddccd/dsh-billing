@@ -48,10 +48,21 @@ type CostModel = {
   /** 该模型缓存命中省下的金额（推算值，宿主上报）。 */
   savedCost?: number
 }
+/** 峰谷拆分的一档：宿主按「每次请求的计费时刻」聚合出来的金额与 token 数。 */
+type TideRow = {
+  /** 'peak' 高峰 / 'off-peak' 低谷 / 'flat' 该价目无峰谷档。 */
+  mode: string
+  cost: number
+  /** 该档的 token 总数（输入 + 缓存命中 + 输出）。 */
+  tokens: number
+  steps?: number
+}
 type CostData = {
   cost: number
   totalTokens: number
   models?: CostModel[]
+  /** 峰谷拆分。缺省表示宿主尚未上报（例如页面比宿主新），此时不渲染该段。 */
+  tide?: TideRow[]
   pricingSource?: string
   pricingSyncedAt?: string
   /** 聚合进来的子代理会话数（不含本会话）。 */
@@ -271,11 +282,72 @@ function ModelRow({ m }: { m: CostModel }) {
   )
 }
 
+/** 峰谷档中文名。flat 单独成档、不混进低谷——否则会把无峰谷档的历史请求谎报成「全在低价时段」。 */
+function tideLabel(mode: string): string {
+  if (mode === 'peak') return '高峰'
+  if (mode === 'off-peak') return '低谷'
+  return '无峰谷档'
+}
+
+/** 峰谷档配色键：高峰琥珀、低谷绿（与峰谷浮层语义色一致），其余中性。 */
+function tideTone(mode: string): string {
+  if (mode === 'peak') return 'peak'
+  if (mode === 'off-peak') return 'off'
+  return 'flat'
+}
+
 /**
- * 会话费用浮层：分模型拆分 + 缓存节省 + 口径脚注。
+ * 峰谷拆分段：复用模型拆分那套「占比条 + 逐行金额」的视觉语言，只把维度换成高峰 / 低谷。
+ * 各行金额合计与上方总额相等——两条聚合在宿主侧共用同一个计价函数，不是分别估算的两套数。
+ *
+ * 只在两档以上时画占比条：单档恒为 100%，是噪声（与模型拆分的取舍一致）。
+ * 但单档**仍渲染行**——只显示「低谷 ¥X · N tk」正是「这次全在低谷」的答案，不是冗余。
+ */
+function TideSplit({ rows, total }: { rows: TideRow[]; total: number }) {
+  const pct = (r: TideRow) => (total > 0 ? (r.cost / total) * 100 : 0)
+  return (
+    <>
+      <span className="billing-pop-sect">峰谷拆分</span>
+      {rows.length > 1 ? (
+        <span className="billing-pop-share-wrap billing-pop-share-tight">
+          <span className="billing-pop-share">
+            {rows.map((r) => (
+              <i
+                key={r.mode}
+                className={`billing-seg billing-seg-${tideTone(r.mode)}`}
+                style={{ width: `${pct(r)}%` }}
+              />
+            ))}
+          </span>
+          <span className="billing-pop-lg">
+            {rows.map((r) => (
+              <span key={r.mode}>
+                <i className={`billing-dot billing-seg-${tideTone(r.mode)}`} />
+                {tideLabel(r.mode)} {pct(r).toFixed(1)}%
+              </span>
+            ))}
+          </span>
+        </span>
+      ) : null}
+      {rows.map((r) => (
+        <span className="billing-pop-model" key={r.mode}>
+          <span className="billing-pop-mrow">
+            <span className="billing-pop-mname">{tideLabel(r.mode)}</span>
+            <span className="billing-pop-mamt">¥{fmtCost(r.cost)}</span>
+          </span>
+          <span className="billing-pop-msub">{r.tokens.toLocaleString()} tk</span>
+        </span>
+      ))}
+    </>
+  )
+}
+
+/**
+ * 会话费用浮层：分模型拆分 + 峰谷拆分 + 缓存节省 + 口径脚注。
  *
  * 缓存节省是**推算值**（命中 token 数 × 未命中价与命中价之差），由宿主算好下发——
  * 客户端只有金额与 token 数、没有单价，无法自行推算。
+ * 峰谷拆分同理：判定依据是**每次请求的计费时刻**，只有宿主拿得到。
  */
 function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
   const models = data.models ?? []
@@ -284,6 +356,8 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
   }
   const multi = models.length > 1
   const total = data.cost
+  const tide = data.tide ?? []
+  const tideTotal = tide.reduce((sum, r) => sum + r.cost, 0)
   const saved = data.cacheSaved ?? 0
   const subagents = data.subagentSessions ?? 0
   const failed = data.failedSessions ?? 0
@@ -313,6 +387,13 @@ function CostPopoverBody({ data }: { data: NonNullable<CostData> }) {
       {models.map((m, i) => (
         <ModelRow key={m.model + i} m={m} />
       ))}
+
+      {tide.length > 0 ? (
+        <>
+          <span className="billing-pop-rule" />
+          <TideSplit rows={tide} total={tideTotal} />
+        </>
+      ) : null}
 
       {saved > 0 ? (
         <>
@@ -615,14 +696,17 @@ export function apply(ctx: any) {
 
 export const inject = ['slots']
 // 测试挂点（生产无副作用）：
-// 浮层三件套与两个纯函数单独导出，使其可脱离 NumberFlow 做渲染回归
+// 浮层三件套 + 峰谷段与几个纯函数单独导出，使其可脱离 NumberFlow 做渲染回归
 // （NumberFlow 依赖 custom element 生命周期，jsdom 跑不起来）。
 export const testHooks = {
   computeTide,
   hitRate,
   shortModel,
   relTime,
+  tideLabel,
+  tideTone,
   CostPopoverBody,
   BalancePopoverBody,
   TidePopoverBody,
+  TideSplit,
 }

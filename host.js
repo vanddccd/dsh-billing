@@ -599,38 +599,99 @@ export function resolvePricing(bareModel, pricing) {
   return null
 }
 
+/**
+ * 单个用量桶的计价结果：解析单价 → **按该桶自己的请求时间**取峰谷档 → 算费用。
+ *
+ * 抽出来给 summarize()（按模型）与 summarizeTide()（按峰谷）共用，是**同源原则**：
+ * 两条聚合走同一段计价代码、同一份单价判定，合计必然相等，不会出现
+ * 「按模型加总 ≠ 按峰谷加总」这种对不上账的情况。
+ *
+ * mode 取值：'peak' 高峰 / 'off-peak' 低谷 / 'flat' 该价目无峰谷档（如 2026-08-17 前的历史请求，
+ * 或用户把 schedules 配没了）——flat 必须单独成档，不能混进低谷，否则会谎报「全在低价时段」。
+ */
+function priceBucket(bucket, config, nowMs) {
+  const model = bucket.model ?? '(unknown)'
+  const bareModel = model === '(unknown)' ? model : (model.includes(':') ? model.slice(model.lastIndexOf(':') + 1) : model)
+  const input = bucket.usage?.inputTokens ?? 0
+  const cache = bucket.usage?.cacheReadTokens ?? 0
+  const output = bucket.usage?.outputTokens ?? 0
+  const resolved = resolvePricing(bareModel, config.pricing)
+  const { rate, mode } = rateAt(resolved?.entry ?? config.fallbackPrice, bucket.time ?? nowMs)
+  return {
+    model,
+    bareModel,
+    input,
+    cache,
+    output,
+    cost: (input * (rate.cacheMiss ?? 0) + cache * (rate.cacheHit ?? 0) + output * (rate.output ?? 0)) / 1e6,
+    // 缓存命中省下的钱（**推算值**，非账单值）：命中 token 数 ×（未命中价 − 命中价）。
+    // 口径假设「这些 token 若未命中会按未命中价计费」；官方实际扣费以账单为准。
+    // 客户端拿不到单价，无法自行推算，故必须由宿主算好随 costPayload 下发。
+    savedCost: (cache * Math.max(0, (rate.cacheMiss ?? 0) - (rate.cacheHit ?? 0))) / 1e6,
+    mode: mode ?? 'flat',
+    priced: Boolean(resolved),
+    matched: resolved?.matched ?? null,
+  }
+}
+
 /** 按模型聚合用量并计算费用（人民币）。 */
 export function summarize(usageSteps, config, nowMs) {
   const byModel = new Map()
   for (const bucket of usageSteps.values()) {
     if (!bucket.usage) continue
-    const model = bucket.model ?? '(unknown)'
-    const bareModel = model === '(unknown)' ? model : (model.includes(':') ? model.slice(model.lastIndexOf(':') + 1) : model)
-    let agg = byModel.get(model)
+    const p = priceBucket(bucket, config, nowMs)
+    let agg = byModel.get(p.model)
     if (!agg) {
-      agg = { model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0, cost: 0, savedCost: 0, priced: false, matched: null }
-      byModel.set(model, agg)
+      agg = { model: p.model, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0, cost: 0, savedCost: 0, priced: false, matched: null }
+      byModel.set(p.model, agg)
     }
-    const input = bucket.usage.inputTokens ?? 0
-    const cache = bucket.usage.cacheReadTokens ?? 0
-    const output = bucket.usage.outputTokens ?? 0
-    agg.inputTokens += input
-    agg.cacheReadTokens += cache
-    agg.outputTokens += output
+    agg.inputTokens += p.input
+    agg.cacheReadTokens += p.cache
+    agg.outputTokens += p.output
     agg.steps += 1
-    const resolved = resolvePricing(bareModel, config.pricing)
-    const { rate } = rateAt(resolved?.entry ?? config.fallbackPrice, bucket.time ?? nowMs)
-    agg.cost += (input * (rate.cacheMiss ?? 0) + cache * (rate.cacheHit ?? 0) + output * (rate.output ?? 0)) / 1e6
-    // 缓存命中省下的钱（**推算值**，非账单值）：命中 token 数 ×（未命中价 − 命中价）。
-    // 口径假设「这些 token 若未命中会按未命中价计费」；官方实际扣费以账单为准。
-    // 客户端拿不到单价，无法自行推算，故必须由宿主算好随 costPayload 下发。
-    agg.savedCost += (cache * Math.max(0, (rate.cacheMiss ?? 0) - (rate.cacheHit ?? 0))) / 1e6
-    if (resolved) {
+    agg.cost += p.cost
+    agg.savedCost += p.savedCost
+    if (p.priced) {
       agg.priced = true
-      agg.matched = agg.matched ?? resolved.matched
+      agg.matched = agg.matched ?? p.matched
     }
   }
   return [...byModel.values()].sort((a, b) => a.model.localeCompare(b.model))
+}
+
+/** 峰谷档的展示顺序：高峰 → 低谷 → 无峰谷档（未知档一律排在最后）。 */
+const TIDE_MODE_ORDER = ['peak', 'off-peak', 'flat']
+
+/**
+ * 按峰谷时段聚合用量与费用（人民币）。
+ *
+ * 判定粒度是**每次请求**：每个桶带自己的 time，故跨会话（含子代理）聚合天然按各自时刻分档，
+ * 不需要额外处理——这也是「我在高峰用了、也在低谷用了」能分别算出来的根本原因。
+ * 与 summarize() 共用 priceBucket()，两条拆分的费用合计必然相等。
+ *
+ * @returns {Array<{mode:string, cost:number, inputTokens:number, cacheReadTokens:number, outputTokens:number, steps:number}>}
+ */
+export function summarizeTide(usageSteps, config, nowMs) {
+  const byMode = new Map()
+  for (const bucket of usageSteps.values()) {
+    if (!bucket.usage) continue
+    const p = priceBucket(bucket, config, nowMs)
+    let agg = byMode.get(p.mode)
+    if (!agg) {
+      agg = { mode: p.mode, cost: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0, steps: 0 }
+      byMode.set(p.mode, agg)
+    }
+    agg.cost += p.cost
+    agg.inputTokens += p.input
+    agg.cacheReadTokens += p.cache
+    agg.outputTokens += p.output
+    agg.steps += 1
+  }
+  return [...byMode.values()].sort((a, b) => {
+    const ia = TIDE_MODE_ORDER.indexOf(a.mode)
+    const ib = TIDE_MODE_ORDER.indexOf(b.mode)
+    return (ia < 0 ? TIDE_MODE_ORDER.length : ia) - (ib < 0 ? TIDE_MODE_ORDER.length : ib)
+  })
 }
 
 function fmtMoney(cny) {
@@ -831,7 +892,11 @@ export function apply(ctx, config) {
 
   /** 结构化会话费用数据（供 Web UI 会话头部渲染）。usage = lineageUsage 聚合结果。 */
   function costPayload(usage) {
-    const rows = summarize(usage?.steps ?? new Map(), current, Date.now())
+    const steps = usage?.steps ?? new Map()
+    // 同一时刻取样：两条聚合（按模型 / 按峰谷）用同一个 nowMs，避免极端情况下各自取到不同的当前时间。
+    const nowMs = Date.now()
+    const rows = summarize(steps, current, nowMs)
+    const tideRows = summarizeTide(steps, current, nowMs)
     return {
       cost: rows.reduce((sum, row) => sum + row.cost, 0),
       totalTokens: rows.reduce((sum, row) => sum + row.inputTokens + row.cacheReadTokens + row.outputTokens, 0),
@@ -846,6 +911,16 @@ export function apply(ctx, config) {
         steps: row.steps,
         savedCost: row.savedCost,
         priced: row.priced,
+      })),
+      /**
+       * 峰谷拆分（高峰 / 低谷 / 无峰谷档各自花了多少）。金额合计恒等于 cost——
+       * 两条聚合共用宿主 priceBucket()，不是分别估算出来的两套数。
+       */
+      tide: tideRows.map((row) => ({
+        mode: row.mode,
+        cost: row.cost,
+        tokens: row.inputTokens + row.cacheReadTokens + row.outputTokens,
+        steps: row.steps,
       })),
       subagentSessions: Math.max(0, (usage?.sessions ?? 0) - 1),
       failedSessions: usage?.failed ?? 0,

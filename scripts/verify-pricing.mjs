@@ -230,5 +230,66 @@ ok('继承事件被切片去重（100+10=110，不重复计）', sumIn === 110, 
 ok('跨会话同名 turn:step 不撞车', merged.has('s-parent:1:1') && merged.has('s-child:1:1'), [...merged.keys()].join(','))
 ok('无前缀调用向后兼容（key 为 turn:step）', M.collectUsage([mkUsage(2, 3, 5, 0)]).has('2:3'))
 
+console.log('\n=== I. 峰谷拆分 summarizeTide（按每次请求的计费时刻分档）===')
+{
+  // flash 2026-09-10 12:00 后：高峰 0.04/2/8，低谷 0.02/1/4
+  const peakT = Date.parse('2026-09-18T10:00:00+08:00') // 周五 10:00 → 高峰
+  const offT = Date.parse('2026-09-18T12:30:00+08:00')  // 周五 12:30 → 低谷（12–14 非高峰窗口）
+  const mk = (time, input) => ({
+    turn: 1, step: 1, time, model: 'deepseek-flash',
+    usage: { inputTokens: input, cacheReadTokens: 0, outputTokens: 0 },
+  })
+
+  const steps = new Map([['a', mk(peakT, 1_000_000)], ['b', mk(offT, 1_000_000)]])
+  const tide = M.summarizeTide(steps, cfg, peakT)
+  ok('高峰/低谷各成一行', tide.length === 2, JSON.stringify(tide.map(r => r.mode)))
+  ok('排序为 高峰 → 低谷', tide[0]?.mode === 'peak' && tide[1]?.mode === 'off-peak')
+  ok('高峰 100 万未命中 = ¥2.00（高峰 2.0 元/百万）', Math.abs(tide[0].cost - 2) < 1e-9, `cost=${tide[0]?.cost}`)
+  ok('低谷 100 万未命中 = ¥1.00（低谷 1.0 元/百万）', Math.abs(tide[1].cost - 1) < 1e-9, `cost=${tide[1]?.cost}`)
+  const byModelTotal = M.summarize(steps, cfg, peakT).reduce((s, r) => s + r.cost, 0)
+  const byTideTotal = tide.reduce((s, r) => s + r.cost, 0)
+  ok('按模型合计 === 按峰谷合计（同源计价，账要对得上）', Math.abs(byModelTotal - byTideTotal) < 1e-12, `${byModelTotal} vs ${byTideTotal}`)
+  ok('token 数分档正确（各 100 万）', tide.every(r => r.inputTokens === 1_000_000), JSON.stringify(tide.map(r => r.inputTokens)))
+  ok('请求次数分档正确（各 1 次）', tide.every(r => r.steps === 1))
+
+  // 边界：12:00 是闭区间起点（低谷），11:59 仍高峰——同一会话跨边界必须分成两行
+  const edge = new Map([
+    ['x', mk(Date.parse('2026-09-18T11:59:00+08:00'), 1)],
+    ['y', mk(Date.parse('2026-09-18T12:00:00+08:00'), 1)],
+  ])
+  const edgeTide = M.summarizeTide(edge, cfg, peakT)
+  ok('11:59 / 12:00 跨边界分两档', edgeTide.length === 2 && edgeTide[0].mode === 'peak' && edgeTide[1].mode === 'off-peak', JSON.stringify(edgeTide.map(r => r.mode)))
+
+  // 周末 / 法定节假日：全天空闲（官方 2026-09-19 说明），都要落低谷而不是高峰
+  const wTide = M.summarizeTide(new Map([['w', mk(Date.parse('2026-09-19T10:00:00+08:00'), 1)]]), cfg, peakT)
+  ok('周六 10:00 归低谷', wTide.length === 1 && wTide[0].mode === 'off-peak', JSON.stringify(wTide.map(r => r.mode)))
+  const hTide = M.summarizeTide(new Map([['h', mk(Date.parse('2026-10-01T10:00:00+08:00'), 1)]]), cfg, peakT)
+  ok('国庆 10-01 10:00 归低谷', hTide.length === 1 && hTide[0].mode === 'off-peak', JSON.stringify(hTide.map(r => r.mode)))
+
+  // 2026-08-17 峰谷制之前：无峰谷档 → 单独成 flat，不得混进低谷谎报「全在低价时段」
+  const fTide = M.summarizeTide(new Map([['f', mk(Date.parse('2026-08-01T10:00:00+08:00'), 1)]]), cfg, peakT)
+  ok('峰谷制之前的请求 → flat（不谎报低谷）', fTide.length === 1 && fTide[0].mode === 'flat', JSON.stringify(fTide.map(r => r.mode)))
+
+  // 无 usage 的桶不参与（与 summarize 同口径）
+  const noUsage = new Map([['n', { turn: 1, step: 1, time: peakT, model: 'deepseek-flash', usage: null }]])
+  ok('无 usage 的桶不计入', M.summarizeTide(noUsage, cfg, peakT).length === 0)
+
+  // 跨会话（子代理）：每个桶带自己的时间，天然按各自时刻分档，不需要额外处理
+  const mkEvents = (time, input) => [
+    { type: 'assistant/chunk', time, data: { turn: 1, step: 1, chunk: { type: 'usage', usage: { inputTokens: input, cacheReadTokens: 0, outputTokens: 0 } } } },
+    { type: 'assistant/message', time, data: { turn: 1, step: 1, message: { source: { provider: 'deepseek-official', model: 'deepseek-flash' } } } },
+  ]
+  const lineage = M.mergeLineageUsage([
+    { sessionId: 's1', events: mkEvents(peakT, 1_000_000), inheritedEventCount: 0 },
+    { sessionId: 's2', events: mkEvents(offT, 1_000_000), inheritedEventCount: 0 },
+  ])
+  const lTide = M.summarizeTide(lineage, cfg, peakT)
+  ok(
+    '跨会话按各自时刻分档（父高峰 ¥2 + 子低谷 ¥1）',
+    lTide.length === 2 && Math.abs(lTide[0].cost - 2) < 1e-9 && Math.abs(lTide[1].cost - 1) < 1e-9,
+    JSON.stringify(lTide.map(r => `${r.mode}:${r.cost}`)),
+  )
+}
+
 console.log(`\n${fail.length === 0 ? '🎉 全部断言通过' : `❌ ${fail.length} 项失败：` + fail.join(' / ')}`)
 process.exit(fail.length ? 1 : 0)

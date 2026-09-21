@@ -105,12 +105,18 @@
 
 /* 占比：3px 堆叠条，无圆角无容器；单模型时不渲染 */
 .billing-pop-share-wrap { display: block; margin-top: 11px; }
+/* 峰谷拆分段的占比条紧跟段标题，不再吃一遍上边距 */
+.billing-pop-share-tight { margin-top: 0; }
 .billing-pop-share { display: flex; height: 3px; gap: 2px; margin-bottom: 7px; }
 .billing-seg { display: block; height: 100%; }
 .billing-seg-0 { background: var(--dsw-static-deepseek-450); }
 .billing-seg-1 { background: rgba(255, 255, 255, 0.3); }
 .billing-seg-2 { background: rgba(255, 255, 255, 0.46); }
 .billing-seg-3 { background: rgba(255, 255, 255, 0.62); }
+/* 峰谷拆分专用配色：高峰琥珀、低谷绿（与峰谷浮层的语义色一致）、无峰谷档中性 */
+.billing-seg-peak { background: var(--dsw-static-amber-400); }
+.billing-seg-off { background: var(--dsw-static-green-400); }
+.billing-seg-flat { background: rgba(255, 255, 255, 0.3); }
 .billing-pop-lg {
   display: flex; flex-wrap: wrap; gap: 5px 14px;
   font-size: 11px; color: var(--dsw-static-neutral-bluish-500); font-variant-numeric: tabular-nums;
@@ -119,6 +125,9 @@
 .billing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 1px; }
 
 .billing-pop-rule { display: block; height: 1px; background: rgba(255, 255, 255, 0.13); margin: 11px 0; }
+
+/* 段标题（如「峰谷拆分」）：比正文标签更淡，只做分区提示 */
+.billing-pop-sect { display: block; margin-bottom: 7px; font-size: 11px; color: var(--dsw-static-neutral-bluish-300); }
 
 .billing-pop-model { display: block; }
 .billing-pop-mrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
